@@ -19,6 +19,9 @@ DAILY_MAX_LOSS_PCT = 0.02 # APPLIES TO JPY PAIRS ONLY for same-day trading stop
 SEVERE_DAILY_DRAWDOWN_PCT_LIMIT = 0.20 # 20% daily drawdown limit
 SEVERE_DAILY_DRAWDOWN_HALT_DAYS = 3    # Number of full days to halt trading after limit is hit
 
+# NEW: JPY Per-Trade Max Drawdown Hard Cap
+MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT = 0.05 # 5% hard cap
+
 MIN_SL_PIPS_JPY = 10
 JPY_SL_BUFFER_PIPS = 5
 RISK_REWARD_RATIO = 2.0
@@ -41,6 +44,7 @@ TIMEFRAME_MAP = {
 }
 ENTRY_TIMEFRAME_MT5 = None
 BOX_TREND_TIMEFRAME_MT5 = None
+ACCOUNT_CURRENCY = "USD" # Default, will be updated
 
 def get_symbol_pip_info(symbol_str):
     symbol_info_obj = mt5.symbol_info(symbol_str)
@@ -66,15 +70,18 @@ def get_symbol_pip_info(symbol_str):
     return pip_size_for_calc, sl_buffer_pips, lot_step
 
 def initialize_mt5_connection():
-    global ENTRY_TIMEFRAME_MT5, BOX_TREND_TIMEFRAME_MT5
+    global ENTRY_TIMEFRAME_MT5, BOX_TREND_TIMEFRAME_MT5, ACCOUNT_CURRENCY
     entry_tf_mt5_val = TIMEFRAME_MAP.get(ENTRY_TIMEFRAME_STR)
     box_trend_tf_mt5_val = TIMEFRAME_MAP.get(BOX_TREND_TIMEFRAME_STR)
     if not mt5.initialize():
         print("initialize() failed, error code =", mt5.last_error()); return False
     print("MetaTrader 5 Initialized Successfully")
     acct_info = mt5.account_info()
-    if acct_info: print(f"Account: {acct_info.login}, Server: {acct_info.server}, Balance: {acct_info.balance} {acct_info.currency}")
-    else: print("Could not get account info. Error:", mt5.last_error());
+    if acct_info:
+        ACCOUNT_CURRENCY = acct_info.currency
+        print(f"Account: {acct_info.login}, Server: {acct_info.server}, Balance: {acct_info.balance} {ACCOUNT_CURRENCY}")
+    else:
+        print("Could not get account info. Error:", mt5.last_error());
     if entry_tf_mt5_val is None or box_trend_tf_mt5_val is None:
         print("Error: Invalid timeframe string(s) in config."); mt5.shutdown(); return False
     ENTRY_TIMEFRAME_MT5 = entry_tf_mt5_val; BOX_TREND_TIMEFRAME_MT5 = box_trend_tf_mt5_val
@@ -138,15 +145,26 @@ def is_pin_bar(candle, is_bullish_check=True):
         if body_size > 0.000001: return upper_wick >= PIN_BAR_WICK_MIN_RATIO * body_size and upper_wick > lower_wick
         else: return upper_wick > lower_wick and upper_wick > (total_range * 0.6)
 
-def calculate_lot_size(equity, current_risk_pct_per_trade, sl_pips, pip_size_for_calc, contract_size, lot_step_val, min_lot_val):
+def calculate_lot_size(equity, current_risk_pct_per_trade, sl_pips, pip_size_for_calc, contract_size, lot_step_val, min_lot_val, symbol_info_obj_for_lot_calc):
+    # NOTE: For full accuracy, pip_value_in_account_currency should be used here.
+    # The current implementation uses pip value in QUOTE currency.
+    # pip_value_one_lot_quote_curr = pip_size_for_calc * contract_size
+    # sl_monetary_value_for_one_lot_quote_curr = sl_pips * pip_value_one_lot_quote_curr
+    # A more accurate approach:
+    if symbol_info_obj_for_lot_calc.point == 0: return min_lot_val # Safety
+    pip_value_one_lot_acc_curr = symbol_info_obj_for_lot_calc.trade_tick_value * (pip_size_for_calc / symbol_info_obj_for_lot_calc.point)
+
     if sl_pips <= 0: return min_lot_val
-    risk_amount_per_trade = equity * current_risk_pct_per_trade
-    value_of_one_pip_per_lot = pip_size_for_calc * contract_size
-    sl_monetary_value_for_one_lot = sl_pips * value_of_one_pip_per_lot
-    if sl_monetary_value_for_one_lot <= 0: return min_lot_val
-    calculated_lot = risk_amount_per_trade / sl_monetary_value_for_one_lot
+    risk_amount_per_trade = equity * current_risk_pct_per_trade # In account currency
+
+    sl_monetary_value_for_one_lot_acc_curr = sl_pips * pip_value_one_lot_acc_curr # In account currency
+    
+    if sl_monetary_value_for_one_lot_acc_curr <= 0: return min_lot_val
+    
+    calculated_lot = risk_amount_per_trade / sl_monetary_value_for_one_lot_acc_curr
     calculated_lot = max(min_lot_val, np.floor(calculated_lot / lot_step_val) * lot_step_val)
     return round(calculated_lot, int(-np.log10(lot_step_val)) if lot_step_val < 1 else 2)
+
 
 def is_within_trading_session(current_time_utc):
     time_now_utc = current_time_utc.time()
@@ -158,17 +176,20 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
     print(f"\n{'='*20} Starting Backtest for {symbol_to_test} {'='*20}")
     pip_size_for_calc, current_sl_buffer_pips_val, lot_step = get_symbol_pip_info(symbol_to_test)
     symbol_info_obj = mt5.symbol_info(symbol_to_test)
+    if symbol_info_obj is None: # Should have been caught by get_symbol_pip_info but double check
+        print(f"CRITICAL: Symbol info for {symbol_to_test} is None in run_single_symbol_backtest. Skipping.")
+        return None, initial_equity_for_symbol
+        
     contract_size = symbol_info_obj.trade_contract_size
     min_lot = symbol_info_obj.volume_min
     is_jpy_pair = "JPY" in symbol_to_test.upper()
 
     if is_jpy_pair:
         symbol_specific_risk_pct = JPY_RISK_PER_TRADE_PCT
-        print(f"INFO ({symbol_to_test}): JPY Rules -> Risk: {symbol_specific_risk_pct*100:.2f}%, Min SL: {MIN_SL_PIPS_JPY} pips, SL Buffer (fixed fallback): {current_sl_buffer_pips_val} pips, Daily Max Loss (same-day stop): {DAILY_MAX_LOSS_PCT*100:.2f}%. Dynamic ATR SL buffer will be used if available.")
+        print(f"INFO ({symbol_to_test}): JPY Rules -> Risk: {symbol_specific_risk_pct*100:.3f}%, Min SL: {MIN_SL_PIPS_JPY} pips, SL Buffer (fixed fallback): {current_sl_buffer_pips_val} pips, Daily Max Loss (same-day stop): {DAILY_MAX_LOSS_PCT*100:.2f}%. JPY Max DD per trade: {MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT*100:.0f}%. Dynamic ATR SL buffer will be used if available.")
     else:
         symbol_specific_risk_pct = RISK_PER_TRADE_PCT
         print(f"INFO ({symbol_to_test}): Non-JPY Rules -> Risk: {symbol_specific_risk_pct*100:.2f}%, SL Buffer: {current_sl_buffer_pips_val} pips. No JPY-specific daily max loss pct applied.")
-    # Print info about the new severe drawdown rule for all symbols
     print(f"INFO ({symbol_to_test}): All Symbols -> Severe Daily DD Limit: {SEVERE_DAILY_DRAWDOWN_PCT_LIMIT*100:.0f}%, Halt Duration: {SEVERE_DAILY_DRAWDOWN_HALT_DAYS} days if limit hit.")
 
     ema_buffer_days = EMA_PERIOD_1H * 3
@@ -194,12 +215,10 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
     peak_equity = initial_equity_for_symbol; max_drawdown_pct = 0.0
     daily_pnl = {}; start_of_day_equity = {}
     
-    # JPY specific halt variables
     consecutive_daily_limit_hits = 0
-    trading_halt_until_date_jpy_streak = None # Renamed for clarity
-    last_processed_day_for_jpy_streak_check = None # Renamed for clarity
+    trading_halt_until_date_jpy_streak = None
+    last_processed_day_for_jpy_streak_check = None
 
-    # NEW: Severe daily drawdown (20%) halt variables
     severe_dd_halt_until_date = None
     last_processed_date_for_severe_dd_reset = None
 
@@ -209,71 +228,60 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
     for i in range(max(1, LOCAL_STRUCTURE_LOOKBACK_5M), len(rates_5m_df)):
         current_candle_5m = rates_5m_df.iloc[i]; prev_candle_5m = rates_5m_df.iloc[i-1]
         current_time_5m = rates_5m_df.index[i]; current_date = current_time_5m.date()
-
-        # --- Daily Init and Halt Management (Order of these blocks matters) ---
         
-        # 1. JPY Consecutive Daily Loss Halt Management (runs once per new day)
         if last_processed_day_for_jpy_streak_check is None or current_date > last_processed_day_for_jpy_streak_check:
             if last_processed_day_for_jpy_streak_check is not None:
                 prev_day_for_streak = last_processed_day_for_jpy_streak_check
                 if prev_day_for_streak in daily_pnl and prev_day_for_streak in start_of_day_equity:
                     sod_equity_prev = start_of_day_equity[prev_day_for_streak]
                     pnl_prev_day = daily_pnl[prev_day_for_streak]
-                    
                     day_hit_jpy_limit = False
                     if is_jpy_pair:
                         daily_loss_limit_amount_prev_jpy = sod_equity_prev * DAILY_MAX_LOSS_PCT
                         if daily_loss_limit_amount_prev_jpy > 0 and pnl_prev_day <= -daily_loss_limit_amount_prev_jpy:
                             day_hit_jpy_limit = True
-                    
-                    if day_hit_jpy_limit:
-                        consecutive_daily_limit_hits += 1
-                    else:
-                        consecutive_daily_limit_hits = 0
-                        
+                    if day_hit_jpy_limit: consecutive_daily_limit_hits += 1
+                    else: consecutive_daily_limit_hits = 0
                     if consecutive_daily_limit_hits >= 3:
                         trading_halt_until_date_jpy_streak = prev_day_for_streak + timedelta(days=4)
                         print(f"HALT_JPY_STREAK ({symbol_to_test}): 3 consec JPY daily losses. Halt until {trading_halt_until_date_jpy_streak}.")
                         consecutive_daily_limit_hits = 0
-
             if trading_halt_until_date_jpy_streak is not None and current_date >= trading_halt_until_date_jpy_streak:
                 print(f"RESUME_JPY_STREAK ({symbol_to_test}): JPY streak halt ended. Resuming on {current_date}.")
                 trading_halt_until_date_jpy_streak = None
             last_processed_day_for_jpy_streak_check = current_date
 
-        # 2. NEW: Severe Daily Drawdown (20%) Halt Management (runs once per new day)
         if last_processed_date_for_severe_dd_reset is None or current_date > last_processed_date_for_severe_dd_reset:
             if severe_dd_halt_until_date is not None and current_date >= severe_dd_halt_until_date:
                 print(f"RESUME_20DD ({symbol_to_test}): Severe daily drawdown halt ended. Resuming trading on {current_date}.")
                 severe_dd_halt_until_date = None
             last_processed_date_for_severe_dd_reset = current_date
         
-        # 3. Initialize daily P&L and SoD Equity
         if current_date not in daily_pnl:
             daily_pnl[current_date] = 0.0
             start_of_day_equity[current_date] = current_equity
 
-        # --- Halt Enforcement (Order Matters: Stricter/longer halts first) ---
-        # A. NEW: Severe Daily Drawdown (20%) Halt
-        if severe_dd_halt_until_date is not None and current_date < severe_dd_halt_until_date:
-            continue
-
-        # B. JPY Consecutive Daily Loss Halt
-        if trading_halt_until_date_jpy_streak is not None and current_date < trading_halt_until_date_jpy_streak:
-            continue
+        if severe_dd_halt_until_date is not None and current_date < severe_dd_halt_until_date: continue
+        if trading_halt_until_date_jpy_streak is not None and current_date < trading_halt_until_date_jpy_streak: continue
         
         peak_equity = max(peak_equity, current_equity)
 
-        # --- Active Trade Management ---
         if active_trade:
             exit_reason, exit_price, unrealized_pnl_trade = None, None, 0
-            value_of_one_pip_for_one_lot = pip_size_for_calc * contract_size
+            
+            # Correct pip value in account currency for P&L calculation
+            if symbol_info_obj.point == 0: 
+                pip_value_one_lot_trade_curr = (pip_size_for_calc * contract_size) # Fallback to quote currency value
+                print(f"WARNING ({symbol_to_test}): Point value zero during active trade PNL. PNL might be inaccurate.")
+            else:
+                pip_value_one_lot_trade_curr = symbol_info_obj.trade_tick_value * (pip_size_for_calc / symbol_info_obj.point)
+
             if active_trade['type'] == 'BUY':
-                unrealized_pnl_trade = (current_candle_5m['close'] - active_trade['entry_price']) * (contract_size * active_trade['lot_size'])
+                unrealized_pnl_trade = ((current_candle_5m['close'] - active_trade['entry_price']) / pip_size_for_calc) * pip_value_one_lot_trade_curr * active_trade['lot_size']
                 if current_candle_5m['high'] >= active_trade['tp']: exit_price, exit_reason = active_trade['tp'], "TP_HIT"
                 elif current_candle_5m['low'] <= active_trade['sl']: exit_price, exit_reason = active_trade['sl'], "SL_HIT"
             elif active_trade['type'] == 'SELL':
-                unrealized_pnl_trade = (active_trade['entry_price'] - current_candle_5m['close']) * (contract_size * active_trade['lot_size'])
+                unrealized_pnl_trade = ((active_trade['entry_price'] - current_candle_5m['close']) / pip_size_for_calc) * pip_value_one_lot_trade_curr * active_trade['lot_size']
                 if current_candle_5m['low'] <= active_trade['tp']: exit_price, exit_reason = active_trade['tp'], "TP_HIT"
                 elif current_candle_5m['high'] >= active_trade['sl']: exit_price, exit_reason = active_trade['sl'], "SL_HIT"
             
@@ -282,7 +290,8 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
 
             if exit_reason:
                 pnl_pips_val = (exit_price - active_trade['entry_price']) / pip_size_for_calc if active_trade['type'] == 'BUY' else (active_trade['entry_price'] - exit_price) / pip_size_for_calc
-                pnl_currency_val = pnl_pips_val * value_of_one_pip_for_one_lot * active_trade['lot_size']
+                pnl_currency_val = pnl_pips_val * pip_value_one_lot_trade_curr * active_trade['lot_size']
+                
                 current_equity += pnl_currency_val
                 daily_pnl[current_date] += pnl_currency_val
                 peak_equity = max(peak_equity, current_equity)
@@ -292,48 +301,34 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
                                'exit_price': exit_price, 'pnl_pips': pnl_pips_val,
                                'pnl_currency': pnl_currency_val, 'reason': exit_reason, 'equity_after_trade': current_equity})
                 
-                # NEW: Check for Severe Daily Drawdown (20%) Trigger (after P&L update)
-                if severe_dd_halt_until_date is None: # Only check if not already scheduled for this type of halt
-                    sod_equity_today = start_of_day_equity.get(current_date)
-                    todays_pnl = daily_pnl.get(current_date, 0.0)
-                    
+                if severe_dd_halt_until_date is None:
+                    sod_equity_today = start_of_day_equity.get(current_date); todays_pnl = daily_pnl.get(current_date, 0.0)
                     if sod_equity_today and sod_equity_today > 0:
-                        daily_loss_value = -todays_pnl # Loss as a positive value
+                        daily_loss_value = -todays_pnl
                         if daily_loss_value / sod_equity_today >= SEVERE_DAILY_DRAWDOWN_PCT_LIMIT:
                             severe_dd_halt_until_date = current_date + timedelta(days=SEVERE_DAILY_DRAWDOWN_HALT_DAYS + 1)
-                            print(f"HALT_20DD ({symbol_to_test}): Daily drawdown >= {SEVERE_DAILY_DRAWDOWN_PCT_LIMIT*100:.0f}% "
-                                  f"({(daily_loss_value / sod_equity_today)*100 :.2f}%) on {current_date}. "
-                                  f"PnL: {todays_pnl:.2f}, SoD Equity: {sod_equity_today:.2f}. "
-                                  f"Trading for this symbol halted until {severe_dd_halt_until_date}.")
-                
+                            print(f"HALT_20DD ({symbol_to_test}): Daily drawdown >= {SEVERE_DAILY_DRAWDOWN_PCT_LIMIT*100:.0f}% ({(daily_loss_value / sod_equity_today)*100 :.2f}%) on {current_date}. PnL: {todays_pnl:.2f}, SoD Equity: {sod_equity_today:.2f}. Trading for this symbol halted until {severe_dd_halt_until_date}.")
                 active_trade = None; waiting_for_pullback_buy = False; waiting_for_pullback_sell = False
             else:
                 continue
         
-        # --- Potentially Open New Trade ---
-        # Note: Halts A and B (Severe DD and JPY Streak) are checked at the top of the loop.
-        # If active, they will 'continue', skipping this section.
-
-        # C. JPY Daily Max Loss Stop (stops new trades for the REST OF THE DAY for JPY pairs)
-        if is_jpy_pair and active_trade is None: # Check only if about to consider a new trade
+        if is_jpy_pair and active_trade is None:
             sod_equity_today = start_of_day_equity.get(current_date, 0)
             if sod_equity_today > 0:
                 current_pnl_today = daily_pnl.get(current_date, 0)
                 daily_loss_limit_amount_jpy = sod_equity_today * DAILY_MAX_LOSS_PCT
                 if daily_loss_limit_amount_jpy > 0 and current_pnl_today <= -daily_loss_limit_amount_jpy:
                     continue
-
-        # D. NEW: Re-check severe DD halt if it was triggered mid-day by a previous trade closure on THIS day.
-        # This ensures no new trades are opened on the day the halt is triggered.
         if severe_dd_halt_until_date is not None and current_date < severe_dd_halt_until_date and active_trade is None:
             continue
-        
         if not is_within_trading_session(current_time_5m) and active_trade is None:
             continue
 
-        if active_trade is None: # All checks passed, ready to consider opening a new trade
+        if active_trade is None:
             trend_1h_bias = get_1h_trend_bias(current_time_5m, rates_1h_df)
             sl_pips, sl_price, entry_price, tp_price = 0, 0, 0, 0 
+            calculated_lot = 0 # Initialize calculated_lot
+            perform_trade_placement = True # Default to allow trade
 
             if trend_1h_bias == "BUY":
                 waiting_for_pullback_sell = False
@@ -364,8 +359,27 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
                                 sl_price = entry_price - (sl_pips * pip_size_for_calc) 
                             
                             if sl_pips > 0:
-                                calculated_lot = calculate_lot_size(current_equity, symbol_specific_risk_pct, sl_pips, pip_size_for_calc, contract_size, lot_step, min_lot)
-                                if calculated_lot >= min_lot:
+                                calculated_lot = calculate_lot_size(current_equity, symbol_specific_risk_pct, sl_pips, pip_size_for_calc, contract_size, lot_step, min_lot, symbol_info_obj)
+                                
+                                # NEW: JPY Per-Trade Max Drawdown Check
+                                if is_jpy_pair and calculated_lot > 0 :
+                                    if symbol_info_obj.point == 0:
+                                        print(f"WARNING ({symbol_to_test} @ {current_time_5m}): Point value is zero. Skipping JPY hard cap DD check.")
+                                    elif current_equity <= 0:
+                                        print(f"WARNING ({symbol_to_test} @ {current_time_5m}): Equity {current_equity:.2f} non-positive. Skipping JPY hard cap DD check.")
+                                    else:
+                                        pip_value_one_lot_acc_curr = symbol_info_obj.trade_tick_value * (pip_size_for_calc / symbol_info_obj.point)
+                                        potential_loss_this_trade_acc_curr = sl_pips * pip_value_one_lot_acc_curr * calculated_lot
+                                        potential_drawdown_this_trade_pct = potential_loss_this_trade_acc_curr / current_equity
+                                        
+                                        if potential_drawdown_this_trade_pct > MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT:
+                                            print(f"JPY TRADE SKIPPED ({symbol_to_test} @ {current_time_5m}): Potential DD {potential_drawdown_this_trade_pct*100:.2f}% "
+                                                  f"(Loss: {potential_loss_this_trade_acc_curr:.2f} {ACCOUNT_CURRENCY} on Equity: {current_equity:.2f} {ACCOUNT_CURRENCY} "
+                                                  f"for SL {sl_pips:.1f} pips, Lot {calculated_lot}) "
+                                                  f"exceeds hard cap of {MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT*100:.2f}%.")
+                                            perform_trade_placement = False
+                                
+                                if perform_trade_placement and calculated_lot >= min_lot:
                                     tp_price = entry_price + (sl_pips * pip_size_for_calc * RISK_REWARD_RATIO)
                                     active_trade = {'type': 'BUY', 'lot_size': calculated_lot, 'entry_price': entry_price, 'sl': sl_price, 'tp': tp_price, 'entry_time': current_time_5m}
                                     waiting_for_pullback_buy = False; broken_level_buy = None
@@ -399,8 +413,27 @@ def run_single_symbol_backtest(symbol_to_test, initial_equity_for_symbol):
                                 sl_price = entry_price + (sl_pips * pip_size_for_calc)
 
                             if sl_pips > 0:
-                                calculated_lot = calculate_lot_size(current_equity, symbol_specific_risk_pct, sl_pips, pip_size_for_calc, contract_size, lot_step, min_lot)
-                                if calculated_lot >= min_lot:
+                                calculated_lot = calculate_lot_size(current_equity, symbol_specific_risk_pct, sl_pips, pip_size_for_calc, contract_size, lot_step, min_lot, symbol_info_obj)
+
+                                # NEW: JPY Per-Trade Max Drawdown Check
+                                if is_jpy_pair and calculated_lot > 0 :
+                                    if symbol_info_obj.point == 0:
+                                        print(f"WARNING ({symbol_to_test} @ {current_time_5m}): Point value is zero. Skipping JPY hard cap DD check.")
+                                    elif current_equity <= 0:
+                                        print(f"WARNING ({symbol_to_test} @ {current_time_5m}): Equity {current_equity:.2f} non-positive. Skipping JPY hard cap DD check.")
+                                    else:
+                                        pip_value_one_lot_acc_curr = symbol_info_obj.trade_tick_value * (pip_size_for_calc / symbol_info_obj.point)
+                                        potential_loss_this_trade_acc_curr = sl_pips * pip_value_one_lot_acc_curr * calculated_lot
+                                        potential_drawdown_this_trade_pct = potential_loss_this_trade_acc_curr / current_equity
+
+                                        if potential_drawdown_this_trade_pct > MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT:
+                                            print(f"JPY TRADE SKIPPED ({symbol_to_test} @ {current_time_5m}): Potential DD {potential_drawdown_this_trade_pct*100:.2f}% "
+                                                  f"(Loss: {potential_loss_this_trade_acc_curr:.2f} {ACCOUNT_CURRENCY} on Equity: {current_equity:.2f} {ACCOUNT_CURRENCY} "
+                                                  f"for SL {sl_pips:.1f} pips, Lot {calculated_lot}) "
+                                                  f"exceeds hard cap of {MAX_PER_TRADE_DRAWDOWN_JPY_HARD_CAP_PCT*100:.2f}%.")
+                                            perform_trade_placement = False
+
+                                if perform_trade_placement and calculated_lot >= min_lot:
                                     tp_price = entry_price - (sl_pips * pip_size_for_calc * RISK_REWARD_RATIO)
                                     active_trade = {'type': 'SELL', 'lot_size': calculated_lot, 'entry_price': entry_price, 'sl': sl_price, 'tp': tp_price, 'entry_time': current_time_5m}
                                     waiting_for_pullback_sell = False; broken_level_sell = None
@@ -436,7 +469,7 @@ if __name__ == "__main__":
             if symbol_info_mt5 is None: print(f"Symbol {symbol_name} not found. Skipping."); continue
             if not symbol_info_mt5.visible:
                 if not mt5.symbol_select(symbol_name, True): print(f"Could not make {symbol_name} visible. Skip."); continue
-                mt5.sleep(1000)
+                mt5.sleep(1000) # Allow time for symbol to be available
             symbol_trades_df, _ = run_single_symbol_backtest(symbol_name, STARTING_BALANCE)
             if symbol_trades_df is not None and not symbol_trades_df.empty:
                 all_symbols_results_list.append(symbol_trades_df)
@@ -448,34 +481,39 @@ if __name__ == "__main__":
                 
                 temp_equity = STARTING_BALANCE
                 equity_curve = [STARTING_BALANCE]
-                for pnl in combined_trades_df['pnl_currency']:
-                    temp_equity += pnl
-                    equity_curve.append(temp_equity)
+                # Ensure 'pnl_currency' column exists and has numeric data
+                if 'pnl_currency' in combined_trades_df.columns:
+                    for pnl in combined_trades_df['pnl_currency'].fillna(0): # Handle potential NaNs
+                        temp_equity += pnl
+                        equity_curve.append(temp_equity)
                 
-                peak_port_eq = equity_curve[0]
-                max_port_dd = 0.0
-                for eq_val in equity_curve:
-                    peak_port_eq = max(peak_port_eq, eq_val)
-                    if peak_port_eq > 0:
-                        drawdown = (peak_port_eq - eq_val) / peak_port_eq
-                        max_port_dd = max(max_port_dd, drawdown)
-                
-                final_portfolio_equity = equity_curve[-1]
-                max_portfolio_drawdown_pct = max_port_dd
+                if len(equity_curve) > 1 : # if any trades happened
+                    peak_port_eq = equity_curve[0]
+                    max_port_dd = 0.0
+                    for eq_val in equity_curve:
+                        peak_port_eq = max(peak_port_eq, eq_val)
+                        if peak_port_eq > 0: # Avoid division by zero if peak is zero or negative
+                            drawdown = (peak_port_eq - eq_val) / peak_port_eq
+                            max_port_dd = max(max_port_dd, drawdown)
+                    
+                    final_portfolio_equity = equity_curve[-1]
+                    max_portfolio_drawdown_pct = max_port_dd
 
-                print(f"\n{'='*20} Overall Combined Portfolio Results {'='*20}")
-                total_trades_combined = len(combined_trades_df)
-                wins_combined_df = combined_trades_df[combined_trades_df['pnl_currency'] > 0]
-                num_wins_combined = len(wins_combined_df); num_losses_combined = total_trades_combined - num_wins_combined
-                overall_win_rate = (num_wins_combined / total_trades_combined) * 100 if total_trades_combined > 0 else 0
-                gross_profit_combined = wins_combined_df['pnl_currency'].sum()
-                gross_loss_combined = abs(combined_trades_df[combined_trades_df['pnl_currency'] < 0]['pnl_currency'].sum())
-                profit_factor_combined = gross_profit_combined / gross_loss_combined if gross_loss_combined > 0 else (float('inf') if gross_profit_combined > 0 else 0)
-                print(f"Start Bal: {STARTING_BALANCE:.2f}, Total Trades: {total_trades_combined}")
-                print(f"Wins: {num_wins_combined}, Losses: {num_losses_combined}, Win Rate: {overall_win_rate:.2f}%")
-                print(f"Gross Profit: {gross_profit_combined:.2f}, Gross Loss: {gross_loss_combined:.2f}, PF: {profit_factor_combined:.2f}")
-                print(f"Max Portfolio DD: {max_portfolio_drawdown_pct*100:.2f}%, Final Equity: {final_portfolio_equity:.2f}")
-                print(f"Total Net PnL: {combined_trades_df['pnl_currency'].sum():.2f}")
-            else: print(f"\nNo trades (after concat). Start: {STARTING_BALANCE:.2f}, End: {STARTING_BALANCE:.2f}")
-        else: print(f"\nNo trades. Start: {STARTING_BALANCE:.2f}, End: {STARTING_BALANCE:.2f}")
+                    print(f"\n{'='*20} Overall Combined Portfolio Results {'='*20}")
+                    total_trades_combined = len(combined_trades_df)
+                    wins_combined_df = combined_trades_df[combined_trades_df['pnl_currency'] > 0]
+                    num_wins_combined = len(wins_combined_df); num_losses_combined = total_trades_combined - num_wins_combined
+                    overall_win_rate = (num_wins_combined / total_trades_combined) * 100 if total_trades_combined > 0 else 0
+                    gross_profit_combined = wins_combined_df['pnl_currency'].sum()
+                    gross_loss_combined = abs(combined_trades_df[combined_trades_df['pnl_currency'] < 0]['pnl_currency'].sum())
+                    profit_factor_combined = gross_profit_combined / gross_loss_combined if gross_loss_combined > 0 else (float('inf') if gross_profit_combined > 0 else 0)
+                    print(f"Start Bal: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}, Total Trades: {total_trades_combined}")
+                    print(f"Wins: {num_wins_combined}, Losses: {num_losses_combined}, Win Rate: {overall_win_rate:.2f}%")
+                    print(f"Gross Profit: {gross_profit_combined:.2f} {ACCOUNT_CURRENCY}, Gross Loss: {gross_loss_combined:.2f} {ACCOUNT_CURRENCY}, PF: {profit_factor_combined:.2f}")
+                    print(f"Max Portfolio DD: {max_portfolio_drawdown_pct*100:.2f}%, Final Equity: {final_portfolio_equity:.2f} {ACCOUNT_CURRENCY}")
+                    print(f"Total Net PnL: {combined_trades_df['pnl_currency'].sum():.2f} {ACCOUNT_CURRENCY}")
+                else: # No trades with PNL data
+                     print(f"\nNo trades with PNL data (after concat). Start: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}, End: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}")
+            else: print(f"\nNo trades (after concat). Start: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}, End: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}")
+        else: print(f"\nNo trades. Start: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}, End: {STARTING_BALANCE:.2f} {ACCOUNT_CURRENCY}")
         shutdown_mt5()
