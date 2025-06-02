@@ -11,7 +11,7 @@ import math # Added for math.floor, math.log10
 # --- General Configuration ---
 SYMBOLS_TO_TRADE_INITIAL = ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
                              "GBPJPY", "XAUUSD", "NZDUSD", "EURCHF", "AUDJPY", "EURNZD", "GBPNZD",
-                            "USOIL", "CADJPY",   "XAGUSD", "XPTUSD", "UKOIL",
+                            "USOIL", "CADJPY",   "XAGUSD", "UKOIL",
                             "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"]
 
 ENTRY_TIMEFRAME_MT5 = mt5.TIMEFRAME_M5
@@ -33,7 +33,7 @@ SYMBOL_SESSIONS = {
     "EURCHF": [(7, 12)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 16)],
     "EURNZD": [(0, 4), (7, 12)], "GBPNZD": [(7, 12)], "XAUUSD": [(7, 16)],
     "XAGUSD": [(7, 16)], "XPTUSD": [(7, 16)], "USOIL":  [(12, 17)],
-    "UKOIL":  [(7, 16)], "BTCUSD":[(0, 16)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 16)], "ETHUSD":[(0, 16)]
+    "UKOIL":  [(7, 16)], "BTCUSD":[(7, 16)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]
 }
 
 # --- Strategy Configuration ---

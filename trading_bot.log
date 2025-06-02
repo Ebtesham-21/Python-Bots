@@ -1,0 +1,32 @@
+2025-05-29 06:35:39,442 - INFO - Initializing Trading Bot...
+2025-05-29 06:35:43,436 - INFO - MetaTrader 5 Initialized for Live Trading
+2025-05-29 06:35:43,436 - INFO - Account Login: 79835118, Server: Exness-MT5Trial8, Balance: 203.23 USD
+2025-05-29 06:35:43,436 - INFO - Symbol EURUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,436 - INFO - Symbol AUDUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,437 - INFO - Symbol USDCHF available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,437 - INFO - Symbol USDCAD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,437 - INFO - Symbol GBPJPY available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.001
+2025-05-29 06:35:43,437 - INFO - Symbol XAUUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.001
+2025-05-29 06:35:43,437 - INFO - Symbol NZDUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,437 - INFO - Symbol EURCHF available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,437 - INFO - Symbol AUDJPY available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.001
+2025-05-29 06:35:43,437 - INFO - Symbol EURNZD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,438 - INFO - Symbol GBPNZD available. Min Lot: 0.01, Max Lot: 200.0, Point: 1e-05
+2025-05-29 06:35:43,438 - INFO - Symbol USOIL available. Min Lot: 0.01, Max Lot: 20.0, Point: 0.001
+2025-05-29 06:35:43,438 - INFO - Symbol CADJPY available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.001
+2025-05-29 06:35:43,438 - INFO - Symbol XAGUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.001
+2025-05-29 06:35:43,438 - INFO - Symbol XPTUSD available. Min Lot: 0.01, Max Lot: 200.0, Point: 0.01
+2025-05-29 06:35:43,438 - INFO - Symbol UKOIL available. Min Lot: 0.01, Max Lot: 20.0, Point: 0.001
+2025-05-29 06:35:43,439 - INFO - Symbol BTCUSD available. Min Lot: 0.01, Max Lot: 100.0, Point: 0.01
+2025-05-29 06:35:43,439 - INFO - Symbol BTCJPY available. Min Lot: 0.01, Max Lot: 20.0, Point: 1.0
+2025-05-29 06:35:43,439 - INFO - Symbol BTCXAU available. Min Lot: 0.01, Max Lot: 20.0, Point: 1e-05
+2025-05-29 06:35:43,439 - INFO - Symbol ETHUSD available. Min Lot: 0.1, Max Lot: 200.0, Point: 0.01
+2025-05-29 06:35:43,439 - INFO - Successfully initialized symbols for trading: ['EURUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'GBPJPY', 'XAUUSD', 'NZDUSD', 'EURCHF', 'AUDJPY', 'EURNZD', 'GBPNZD', 'USOIL', 'CADJPY', 'XAGUSD', 'XPTUSD', 'UKOIL', 'BTCUSD', 'BTCJPY', 'BTCXAU', 'ETHUSD']
+2025-05-29 06:35:43,440 - INFO - No existing trade history file. Initialized new history.
+2025-05-29 06:35:43,441 - INFO - Bot Started. Initial Daily Start Balance: 203.23 USD. Daily Risk Budget: 10.16 USD.
+2025-05-29 06:35:43,441 - INFO - Bot Initialized. Starting Trading Loop...
+2025-05-29 06:37:03,357 - INFO - Bot shutdown requested by user (Ctrl+C).
+2025-05-29 06:37:03,358 - INFO - Bot shutting down. Performing final check for closed trades...
+2025-05-29 06:37:03,358 - INFO - Bot shutting down. No active trades managed by this bot.
+2025-05-29 06:37:03,358 - INFO - MetaTrader 5 Shutdown
+2025-05-29 06:37:03,358 - INFO - Bot shutdown complete.
