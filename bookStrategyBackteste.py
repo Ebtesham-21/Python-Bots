@@ -186,18 +186,13 @@ def calculate_performance_stats(trades_list, initial_balance_for_period):
     stats["max_drawdown_abs"] = abs(absolute_drawdowns.min()) if not absolute_drawdowns.empty else 0
     if stats["max_drawdown_abs"] > 0 and not rolling_max_equity.empty:
         mdd_end_index = absolute_drawdowns.idxmin()
-        if mdd_end_index < len(rolling_max_equity) and mdd_end_index > 0: # peak must be before or at trough
-            peak_at_mdd_start = rolling_max_equity.iloc[mdd_end_index] # Peak value at the point where drawdown ends
-                                                                      # Or more accurately, the peak from which this drawdown started
-            # Find the peak value that corresponds to this specific max drawdown
-            # The peak for this max drawdown is rolling_max_equity[absolute_drawdowns.idxmin()]
-            # However, if the equity never recovered above this peak, the denominator should be this peak.
-            # If the absolute_drawdowns.idxmin() is 0 (meaning drawdown starts from initial balance), peak_at_mdd_start would be initial_balance.
+        if mdd_end_index < len(rolling_max_equity) and mdd_end_index > 0: 
+            peak_at_mdd_start = rolling_max_equity.iloc[mdd_end_index] 
             if peak_at_mdd_start > 0 :
                  stats["max_drawdown_pct"] = (stats["max_drawdown_abs"] / peak_at_mdd_start) * 100
-            else: # Should not happen if initial balance is >0
+            else: 
                  stats["max_drawdown_pct"] = 0.0
-        elif mdd_end_index == 0 and initial_balance_for_period > 0 : # Drawdown from the very start
+        elif mdd_end_index == 0 and initial_balance_for_period > 0 : 
             stats["max_drawdown_pct"] = (stats["max_drawdown_abs"] / initial_balance_for_period) * 100
         else: 
             stats["max_drawdown_pct"] = 0.0 
@@ -227,7 +222,6 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
     df_h1 = get_historical_data(symbol, mt5.TIMEFRAME_H1, start_date, end_date)
     if df_h1.empty:
         logger.warning(f"No H1 data for {symbol}. H1 dependent indicators will be NaN.")
-        # Create empty df with expected columns to prevent merge errors, will be NaN filled
         df_h1_resampled = pd.DataFrame(columns=['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21']) 
     else:
         df_h1['H1_EMA8'] = ta.ema(df_h1['close'], length=8)
@@ -242,18 +236,16 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_h4_resampled = df_h4[['H4_EMA8', 'H4_EMA21']].copy()
     else:
         logger.warning(f"No H4 data for {symbol}. H4 dependent indicators will be NaN.")
-        # df_h4_resampled will be created as empty with columns later if h4_data_available is False for merge logic
 
     df_m5 = get_historical_data(symbol, mt5.TIMEFRAME_M5, start_date, end_date)
-    if df_m5.empty: return pd.DataFrame() # M5 is the base
+    if df_m5.empty: return pd.DataFrame() 
     df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
     df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13)
     df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
-    # 🔹 Step 1: Add ATR to M5 Data
-    if len(df_m5) >= 14: # Ensure enough data for ATR calculation
+    if len(df_m5) >= 14: 
         df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     else:
-        df_m5['ATR'] = np.nan # Not enough data, fill with NaN
+        df_m5['ATR'] = np.nan 
 
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled.sort_index(),
                                 left_index=True, right_index=True,
@@ -264,24 +256,18 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
                                     left_index=True, right_index=True,
                                     direction='backward', tolerance=pd.Timedelta(hours=4))
     else:
-        # Ensure H4 columns exist if H4 data was not available, filled with NaN
         combined_df['H4_EMA8'] = np.nan
         combined_df['H4_EMA21'] = np.nan
         
-    combined_df.dropna(inplace=True) # Drops rows if any EMAs (M5, H1, or merged H4) or ATR are NaN
+    combined_df.dropna(inplace=True) 
     return combined_df
 
 
 # --- Main Execution ---
 if __name__ == "__main__":
     start_datetime = datetime(2024, 8, 1) 
-    end_datetime = datetime(2025, 5, 31) # Shortened for quicker test runs
-    # end_datetime = datetime(2025, 5, 30)
+    end_datetime = datetime(2025, 5, 31) 
     
-    # Buffer for EMAs and ATR. ATR(14) on M5 is 14*5 mins. H4 EMA21 is 21*4 hours.
-    # Longest EMA is H4 EMA21 (21 candles * 4 hours/candle = 84 hours ~ 3.5 days)
-    # ATR 14 on M5 is negligible compared to this.
-    # A buffer of 10-15 days should be more than sufficient.
     buffer_days = 15 
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
 
@@ -311,10 +297,9 @@ if __name__ == "__main__":
             props = ALL_SYMBOL_PROPERTIES[sym]
             df = prepare_symbol_data(sym, data_fetch_start_date, end_datetime, props)
             if not df.empty:
-                # Filter for master index only after all data (including buffer) is prepared
                 df_filtered_for_index = df[(df.index >= pd.Timestamp(start_datetime, tz='UTC')) & (df.index <= pd.Timestamp(end_datetime, tz='UTC'))]
                 if not df_filtered_for_index.empty:
-                    prepared_symbol_data[sym] = df # Store the full df with buffer
+                    prepared_symbol_data[sym] = df 
                     master_time_index_set.update(df_filtered_for_index.index)
                 else:
                     logger.warning(f"No data for {sym} within the backtest period {start_datetime} - {end_datetime} after initial buffer fetch. Skipping.")
@@ -341,10 +326,6 @@ if __name__ == "__main__":
             if global_active_trade:
                 trade_symbol = global_active_trade['symbol']
                 props = ALL_SYMBOL_PROPERTIES[trade_symbol]
-                # pip_adj for trailing stop is based on symbol's pip_value_calc
-                # For example, 3 "pips" for trailing adjustment.
-                # pip_value_calc is like 0.0001 for EURUSD, 0.01 for XAUUSD or JPY pairs
-                # So, pip_adj is a price increment.
                 pip_adj_tsl = 3 * props['pip_value_calc'] 
 
 
@@ -358,7 +339,7 @@ if __name__ == "__main__":
                     elif global_active_trade['type'] == "SELL" and current_candle_for_active_trade['high'] >= global_active_trade['sl']:
                         exit_price = global_active_trade['sl']; global_active_trade['status'] = "SL_HIT"
                     
-                    if global_active_trade['status'] == "OPEN": # Check TP only if not already SL hit on this candle
+                    if global_active_trade['status'] == "OPEN": 
                         if global_active_trade['type'] == "BUY" and current_candle_for_active_trade['high'] >= global_active_trade['tp']:
                             exit_price = global_active_trade['tp']; global_active_trade['status'] = "TP_HIT"
                         elif global_active_trade['type'] == "SELL" and current_candle_for_active_trade['low'] <= global_active_trade['tp']:
@@ -369,10 +350,9 @@ if __name__ == "__main__":
                         global_active_trade['exit_time'] = timestamp
                         global_active_trade['exit_price'] = exit_price
                         price_diff = (exit_price - global_active_trade['entry_price']) if global_active_trade['type'] == "BUY" else (global_active_trade['entry_price'] - exit_price)
-                        # Ensure pnl_ticks calculation is robust
                         if props['trade_tick_size'] > 0:
                             pnl_ticks = price_diff / props['trade_tick_size']
-                        else: # Should not happen with earlier checks, but as a safeguard
+                        else: 
                             pnl_ticks = 0
                             logger.error(f"[{trade_symbol}] trade_tick_size is zero or invalid at PNL calculation.")
 
@@ -385,35 +365,69 @@ if __name__ == "__main__":
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
                         global_active_trade = None
                     
-                    if global_active_trade and not closed_this_bar: # Trailing Stop Logic
-                        if not global_active_trade['trailing_active']:
-                            if (global_active_trade['type']=="BUY" and current_candle_for_active_trade['high']>=global_active_trade['ts_activation_price']) or \
-                               (global_active_trade['type']=="SELL" and current_candle_for_active_trade['low']<=global_active_trade['ts_activation_price']):
-                                global_active_trade['trailing_active']=True
-                                logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED. SL was {global_active_trade['sl']:.{props['digits']}f}")
-                        
-                        if global_active_trade['trailing_active']:
-                            symbol_df = prepared_symbol_data[trade_symbol]
-                            try:
-                                # Ensure current_idx_in_symbol_df is valid and we have enough preceding candles
-                                current_idx_in_symbol_df = symbol_df.index.get_loc(timestamp)
-                                if current_idx_in_symbol_df >= 2: # Need at least 3 candles: current and 2 previous for a 3-bar low/high
-                                                                 # .iloc[idx-2 : idx+1] gives 3 candles if current is idx
-                                    # Trailing based on last 3 M5 candles (current + 2 previous)
-                                    last_3_candles = symbol_df.iloc[max(0, current_idx_in_symbol_df-2) : current_idx_in_symbol_df+1]
-                                    
-                                    if global_active_trade['type']=="BUY":
-                                        new_sl = last_3_candles['low'].min() - pip_adj_tsl
-                                        if new_sl > global_active_trade['sl']: 
-                                            global_active_trade['sl'] = round(new_sl, props['digits'])
-                                            # logger.debug(f"[{trade_symbol}] {timestamp} TSL Update BUY: New SL {global_active_trade['sl']:.{props['digits']}f}")
-                                    else: # SELL
-                                        new_sl = last_3_candles['high'].max() + pip_adj_tsl
-                                        if new_sl < global_active_trade['sl']: 
-                                            global_active_trade['sl'] = round(new_sl, props['digits'])
-                                            # logger.debug(f"[{trade_symbol}] {timestamp} TSL Update SELL: New SL {global_active_trade['sl']:.{props['digits']}f}")
-                            except KeyError:
-                                logger.warning(f"Timestamp {timestamp} not found in {trade_symbol} df for trailing SL, skipping TSL update.")
+                    # --- New Trailing Stop Logic ---
+                    if global_active_trade and not closed_this_bar:
+                        # Required variables for TSL
+                        # trade_symbol = global_active_trade['symbol'] (already defined)
+                        # props = ALL_SYMBOL_PROPERTIES[trade_symbol] (already defined)
+                        # pip_adj_tsl = 3 * props['pip_value_calc'] (already defined)
+                        # current_candle_for_active_trade (already defined)
+                        # prepared_symbol_data (available)
+
+                        current_price_for_ts = current_candle_for_active_trade['high'] if global_active_trade['type'] == "BUY" else current_candle_for_active_trade['low']
+                        entry_price_ts = global_active_trade['entry_price']
+                        r_diff_ts = global_active_trade['r_value_price_diff']
+                        ts_levels_ts = global_active_trade['ts_trigger_levels']
+                        current_ts_level_idx = global_active_trade['next_ts_level_idx']
+
+                        if current_ts_level_idx < len(ts_levels_ts): # Ensure we still have R-levels to check
+                            r_multiple_target = ts_levels_ts[current_ts_level_idx]
+                            
+                            target_price_for_ts_level = 0
+                            if global_active_trade['type'] == "BUY":
+                                target_price_for_ts_level = entry_price_ts + (r_multiple_target * r_diff_ts)
+                            else: # SELL
+                                target_price_for_ts_level = entry_price_ts - (r_multiple_target * r_diff_ts)
+
+                            price_hit_ts_level = False
+                            if global_active_trade['type'] == "BUY" and current_price_for_ts >= target_price_for_ts_level:
+                                price_hit_ts_level = True
+                            elif global_active_trade['type'] == "SELL" and current_price_for_ts <= target_price_for_ts_level:
+                                price_hit_ts_level = True
+
+                            if price_hit_ts_level:
+                                if not global_active_trade['trailing_active']:
+                                    global_active_trade['trailing_active'] = True
+                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+                                else:
+                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop Update Triggered at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+
+                                symbol_df_for_tsl = prepared_symbol_data[trade_symbol]
+                                try:
+                                    current_idx_in_symbol_df_tsl = symbol_df_for_tsl.index.get_loc(timestamp)
+                                    if current_idx_in_symbol_df_tsl >= 2: # Need at least 3 candles
+                                        last_3_candles_tsl = symbol_df_for_tsl.iloc[max(0, current_idx_in_symbol_df_tsl - 2) : current_idx_in_symbol_df_tsl + 1]
+                                        
+                                        new_sl_ts = 0
+                                        if global_active_trade['type'] == "BUY":
+                                            new_sl_ts = last_3_candles_tsl['low'].min() - pip_adj_tsl
+                                            if new_sl_ts > global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
+                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated BUY: New SL {global_active_trade['sl']:.{props['digits']}f}")
+                                        else: # SELL
+                                            new_sl_ts = last_3_candles_tsl['high'].max() + pip_adj_tsl
+                                            if new_sl_ts < global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
+                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated SELL: New SL {global_active_trade['sl']:.{props['digits']}f}")
+                                    else:
+                                        logger.debug(f"[{trade_symbol}] {timestamp} Not enough preceding candles for TSL adjustment at {r_multiple_target}R.")
+
+                                except KeyError:
+                                    logger.warning(f"Timestamp {timestamp} not found in {trade_symbol} df for TSL, skipping TSL update for level {r_multiple_target}R.")
+                                
+                                global_active_trade['next_ts_level_idx'] += 1
+                    # --- End of New Trailing Stop Logic ---
+
 
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
@@ -421,10 +435,10 @@ if __name__ == "__main__":
 
                 if order_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[order_symbol].index:
                     current_candle_for_pending_order = prepared_symbol_data[order_symbol].loc[timestamp]
-                    entry_price_pending = global_pending_order['entry_price'] # Renamed to avoid clash
-                    sl_price_pending = global_pending_order['sl_price']       # Renamed
-                    order_type_pending = global_pending_order['type']         # Renamed
-                    lot_size_pending = global_pending_order['lot_size']       # Renamed
+                    entry_price_pending = global_pending_order['entry_price'] 
+                    sl_price_pending = global_pending_order['sl_price']       
+                    order_type_pending = global_pending_order['type']         
+                    lot_size_pending = global_pending_order['lot_size']       
                     
                     m5_ema21_for_invalidation = current_candle_for_pending_order['M5_EMA21'] 
                     
@@ -443,14 +457,13 @@ if __name__ == "__main__":
                     else:
                         triggered = False; actual_entry_price = 0
                         if order_type_pending == "BUY_STOP" and current_candle_for_pending_order['high'] >= entry_price_pending:
-                            actual_entry_price = entry_price_pending; triggered = True # Assume entry at pending price
+                            actual_entry_price = entry_price_pending; triggered = True 
                         elif order_type_pending == "SELL_STOP" and current_candle_for_pending_order['low'] <= entry_price_pending:
-                            actual_entry_price = entry_price_pending; triggered = True # Assume entry at pending price
+                            actual_entry_price = entry_price_pending; triggered = True 
                         
                         if triggered:
                             logger.info(f"[{order_symbol}] {timestamp} PENDING {order_type_pending} TRIGGERED @{actual_entry_price:.{props['digits']}f} Lot:{lot_size_pending}")
                             
-                            # SL distance is from the actual_entry_price to the sl_price_pending (which was ATR based)
                             risk_val_diff = abs(actual_entry_price - sl_price_pending) 
                             
                             if risk_val_diff <= 0 or lot_size_pending <= 0:
@@ -458,8 +471,7 @@ if __name__ == "__main__":
                                 daily_risk_allocated_on_current_date -= global_pending_order['intended_risk_amount'] 
                                 global_pending_order = None
                             else:
-                                # TP is 3x the initial SL distance (risk_val_diff)
-                                tp_price = actual_entry_price + (3 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (3 * risk_val_diff)
+                                tp_price = actual_entry_price + (4 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (4 * risk_val_diff)
                                 tp_price = round(tp_price, props['digits'])
 
                                 global_active_trade = {
@@ -467,23 +479,24 @@ if __name__ == "__main__":
                                     "type": "BUY" if order_type_pending=="BUY_STOP" else "SELL",
                                     "entry_time": timestamp,
                                     "entry_price": actual_entry_price,
-                                    "sl": sl_price_pending, # This was the ATR-based SL
+                                    "sl": sl_price_pending, 
                                     "initial_sl": sl_price_pending,
-                                    "tp": tp_price, # This is 3R TP
-                                    "r_value_price_diff": risk_val_diff, # This is the initial 1.5*ATR SL distance
-                                    "trailing_active": False,
-                                    # Trailing stop activates when price moves 1.5 * R_value_price_diff in profit
-                                    "ts_activation_price": actual_entry_price + (1.5 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (1.5 * risk_val_diff),
+                                    "tp": tp_price, 
+                                    "r_value_price_diff": risk_val_diff, 
                                     "status": "OPEN",
                                     "lot_size": lot_size_pending,
-                                    "pnl_currency": 0.0
+                                    "pnl_currency": 0.0,
+                                    # New TSL fields
+                                    "trailing_active": False,
+                                    "ts_trigger_levels": [1.5, 2.0, 2.5, 3.0, 3.5],
+                                    "next_ts_level_idx": 0,
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
-                                    symbol_conceptual_start_balances[order_symbol] = shared_account_balance # Portfolio balance at time of this symbol's first trade
+                                    symbol_conceptual_start_balances[order_symbol] = shared_account_balance 
                                 global_pending_order = None
 
-            if not global_active_trade and not global_pending_order: # Look for new trade setups
+            if not global_active_trade and not global_pending_order: 
                 for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
                     if sym_to_check_setup not in prepared_symbol_data or timestamp not in prepared_symbol_data[sym_to_check_setup].index:
                         continue 
@@ -491,10 +504,7 @@ if __name__ == "__main__":
                     current_candle_for_setup = prepared_symbol_data[sym_to_check_setup].loc[timestamp]
                     props_setup = ALL_SYMBOL_PROPERTIES[sym_to_check_setup]
                     
-                    # pip_adj for entry price (e.g., 1 pip, not 3*pip_value)
-                    # pip_adj_setup = 1 * props_setup['point'] # e.g. 1 point, more precise than pip_value_calc for entry setting
-                    # Or use a small fixed number of points/ticks based on trade_tick_size
-                    pip_adj_setup = 3 * props_setup['trade_tick_size'] # e.g. 3 ticks above/below
+                    pip_adj_setup = 3 * props_setup['trade_tick_size'] 
 
                     h1_trend_bias_setup = None
                     m5_setup_bias_setup = None 
@@ -535,50 +545,43 @@ if __name__ == "__main__":
                                (m5_setup_bias_setup=="SELL" and current_candle_for_setup['high']>=m5_ema8)
                     if not pullback: continue
                     
-                    # 🔹 Step 2: Use ATR for SL & TP Calculation
                     atr_val = current_candle_for_setup.get('ATR', np.nan)
                     if pd.isna(atr_val) or atr_val <= 0:
-                        # logger.debug(f"[{sym_to_check_setup}] {timestamp} ATR value {atr_val} is invalid for SL/TP. Skipping.")
                         continue
                     
                     sl_distance_atr = 1.5 * atr_val 
-                    # TP will be 3.0 * sl_distance_atr from entry (calculated when trade triggers)
 
                     symbol_df_for_lookback = prepared_symbol_data[sym_to_check_setup]
                     try:
                         current_idx_in_symbol_df_for_lookback = symbol_df_for_lookback.index.get_loc(timestamp)
                     except KeyError: continue 
 
-                    if current_idx_in_symbol_df_for_lookback < 4: # Need 5 candles for a 5-bar high/low (iloc index-4 to index)
+                    if current_idx_in_symbol_df_for_lookback < 4: 
                         continue
                     
-                    # Lookback of 5 candles including the current one for entry definition
                     lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-4 : current_idx_in_symbol_df_for_lookback+1]
                     
                     entry_px, sl_px, order_type_setup = (0,0,"")
 
                     if m5_setup_bias_setup=="BUY":
-                        entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup # Entry slightly above 5-bar high
-                        sl_px = entry_px - sl_distance_atr                          # SL is 1.5 * ATR below entry
+                        entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup 
+                        sl_px = entry_px - sl_distance_atr                          
                         order_type_setup="BUY_STOP"
                     else: # SELL
-                        entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup # Entry slightly below 5-bar low
-                        sl_px = entry_px + sl_distance_atr                         # SL is 1.5 * ATR above entry
+                        entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup 
+                        sl_px = entry_px + sl_distance_atr                         
                         order_type_setup="SELL_STOP"
                     
                     entry_px=round(entry_px, props_setup['digits'])
                     sl_px=round(sl_px, props_setup['digits'])
                     
-                    # 🔹 Step 3: Update Lot Size Calculation (sl_diff is the key)
-                    sl_diff = abs(entry_px - sl_px) # This is effectively sl_distance_atr after rounding
+                    sl_diff = abs(entry_px - sl_px) 
 
-                    if sl_diff <= 0: # Handles cases where ATR is too small or entry/SL are equal after rounding
-                        # logger.debug(f"[{sym_to_check_setup}] {timestamp} SL difference is zero or negative ({sl_diff:.{props_setup['digits']}f}). Entry: {entry_px}, SL: {sl_px}. ATR: {atr_val}. Skipping.")
+                    if sl_diff <= 0: 
                         continue
                     
-                    # Check against daily risk limit
                     intended_risk_amount_this_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
-                    if daily_risk_allocated_on_current_date + intended_risk_amount_this_trade > max_daily_risk_budget_for_current_date + 1e-9: # Add tolerance for float comparison
+                    if daily_risk_allocated_on_current_date + intended_risk_amount_this_trade > max_daily_risk_budget_for_current_date + 1e-9: 
                         logger.info(f"[{sym_to_check_setup}] {timestamp} Portfolio Daily Risk Limit Reached for {current_simulation_date}. "
                                     f"Max: {max_daily_risk_budget_for_current_date:.2f}, "
                                     f"Allocated: {daily_risk_allocated_on_current_date:.2f}, "
@@ -587,7 +590,6 @@ if __name__ == "__main__":
 
                     calc_lot = calculate_lot_size(shared_account_balance, RISK_PER_TRADE_PERCENT, sl_diff, props_setup)
                     if calc_lot <= 0:
-                        # logger.debug(f"[{sym_to_check_setup}] {timestamp} Calculated lot size is {calc_lot}. SL diff: {sl_diff}. Skipping.")
                         continue
                     
                     global_pending_order = {"symbol":sym_to_check_setup, "type":order_type_setup, 
@@ -599,7 +601,7 @@ if __name__ == "__main__":
                     daily_risk_allocated_on_current_date += intended_risk_amount_this_trade
                     logger.info(f"[{sym_to_check_setup}] {timestamp} GLOBAL PENDING {order_type_setup} Order Set: Entry {entry_px:.{props_setup['digits']}f}, SL {sl_px:.{props_setup['digits']}f} (ATR: {atr_val:.{props_setup['digits']}f}), Lot {calc_lot}")
                     logger.debug(f"  Portfolio daily risk allocated: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
-                    break # Portfolio can only have one pending order at a time
+                    break 
         
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
 
@@ -607,29 +609,18 @@ if __name__ == "__main__":
             logger.info(f"\n--- Performance Summary for Symbol: {symbol_iter} ---")
             logger.info(f"  Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
             
-            # Use the portfolio balance at the time of the first trade for this symbol as its conceptual start balance
-            # If no trades, use the global initial balance.
             conceptual_start_bal_for_symbol = INITIAL_ACCOUNT_BALANCE 
-            if symbol_trades_list: # If there are trades for this symbol
-                # Sort by entry time to find the first trade's context
+            if symbol_trades_list: 
                 symbol_trades_list.sort(key=lambda x: x['entry_time'])
-                # Get the portfolio balance *before* this symbol's first trade PnL was applied
-                # This requires knowing the balance just before the first trade of this symbol *impacted* the shared balance.
-                # A simpler approach: use the 'symbol_conceptual_start_balances' recorded when the first trade was *initiated*.
                 conceptual_start_bal_for_symbol = symbol_conceptual_start_balances.get(symbol_iter, INITIAL_ACCOUNT_BALANCE)
 
-
             if not symbol_trades_list: 
-                # If no trades, its conceptual start balance is effectively the portfolio's initial balance,
-                # or the balance when it was first considered if we tracked that. For simplicity, using INITIAL_ACCOUNT_BALANCE.
                 logger.info(f"  Starting Balance (conceptual for this symbol): {INITIAL_ACCOUNT_BALANCE:.2f} USD")
-                logger.info(f"  Ending Balance (conceptual): {INITIAL_ACCOUNT_BALANCE:.2f} USD") # No change as no trades
+                logger.info(f"  Ending Balance (conceptual): {INITIAL_ACCOUNT_BALANCE:.2f} USD") 
                 logger.info(f"  No trades executed for {symbol_iter} during the backtest period.")
             else:
-                # Calculate stats based on this symbol's trades and its conceptual starting balance
                 symbol_stats = calculate_performance_stats(symbol_trades_list, conceptual_start_bal_for_symbol)
                 logger.info(f"  Starting Balance (conceptual, portfolio balance when this symbol's first trade was initiated): {symbol_stats['start_balance']:.2f} USD")
-                # The 'end_balance' from calculate_performance_stats will be start_balance + PnL of these trades
                 logger.info(f"  Ending Balance (conceptual, start_bal + PnL for this symbol's trades): {symbol_stats['end_balance']:.2f} USD")
                 logger.info(f"  Total Trades: {symbol_stats['total_trades']}")
                 logger.info(f"  Winning Trades: {symbol_stats['winning_trades']}")
@@ -646,9 +637,7 @@ if __name__ == "__main__":
             logger.info(f"Tested Symbols: {SYMBOLS_AVAILABLE_FOR_TRADE}")
             logger.info(f"Overall Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
             logger.info(f"Overall Starting Balance: {overall_stats['start_balance']:.2f} USD")
-            # 'end_balance' from calculate_performance_stats is derived from summing PnLs of sorted trades
             logger.info(f"Overall Ending Balance (from sorted trades PnL): {overall_stats['end_balance']:.2f} USD")
-            # 'shared_account_balance' is the iteratively updated balance throughout the simulation
             logger.info(f"Overall Ending Balance (final portfolio balance variable): {shared_account_balance:.2f} USD") 
             logger.info(f"Overall Total Trades: {overall_stats['total_trades']}")
             logger.info(f"Overall Winning Trades: {overall_stats['winning_trades']}")
@@ -661,5 +650,5 @@ if __name__ == "__main__":
             logger.info("No trades were executed across any symbols during the backtest period.")
             logger.info(f"Overall Starting Balance: {INITIAL_ACCOUNT_BALANCE:.2f} USD")
             logger.info(f"Overall Ending Balance: {shared_account_balance:.2f} USD")
-
+ 
         shutdown_mt5_interface()
