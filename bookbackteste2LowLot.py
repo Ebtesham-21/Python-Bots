@@ -16,10 +16,6 @@ SYMBOLS_AVAILABLE_FOR_TRADE = []
 ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
-# Define commodity symbols for specific lot sizing logic
-COMMODITY_SYMBOLS_LIST = ["XAUUSD", "XAGUSD", "XPTUSD", "USOIL", "UKOIL", "XAGGBP", "XAGEUR", "XAGAUD"]
-
-
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
                        "GBPJPY",  "NZDUSD", "EURCHF", "AUDJPY", "EURNZD", "GBPNZD",
@@ -42,7 +38,8 @@ for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
 
 
 INITIAL_ACCOUNT_BALANCE = 200.00
-RISK_PER_TRADE_PERCENT = 0.01 # Risk 1% of current balance per trade (threshold for Crypto/Commodities)
+RISK_PER_TRADE_PERCENT = 0.01 # Max Risk 1% of current balance per trade (used for new risk filter upper bound)
+MIN_RISK_PER_TRADE_PERCENT_FOR_MIN_LOT = 0.000 # Min Risk 0.7% for min lot trade (new risk filter lower bound)
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
 
 
@@ -89,7 +86,7 @@ def initialize_mt5_interface(symbols_to_check):
             'point': symbol_info_obj.point, 'digits': symbol_info_obj.digits,
             'trade_tick_size': symbol_info_obj.trade_tick_size, 
             'trade_tick_value': symbol_info_obj.trade_tick_value,
-            'volume_min': symbol_info_obj.volume_min, 
+            'volume_min': symbol_info_obj.volume_min if symbol_info_obj.volume_min > 0 else 0.01, # Ensure volume_min is not zero
             'volume_step': symbol_info_obj.volume_step if symbol_info_obj.volume_step > 0 else 0.01,
             'volume_max': symbol_info_obj.volume_max, 
             'trade_contract_size': symbol_info_obj.trade_contract_size,
@@ -122,94 +119,23 @@ def is_within_session(candle_time_utc, symbol_sessions):
         if start_hour <= candle_hour < end_hour: return True
     return False
 
-def calculate_lot_size(account_balance_for_risk_calc, risk_percent_config, sl_price_diff, symbol_props, symbol_name):
-    # Universal initial checks
-    if sl_price_diff <= 0: 
-        logger.debug(f"[{symbol_name}] SL price difference is not positive ({sl_price_diff}). Skipping lot calculation.")
-        return 0
-    if symbol_props['trade_tick_size'] == 0 or symbol_props['trade_tick_value'] == 0:
-        logger.debug(f"[{symbol_name}] Invalid tick size ({symbol_props['trade_tick_size']}) or tick value ({symbol_props['trade_tick_value']}). Skipping lot calculation.")
-        return 0
-    if symbol_props['volume_min'] <= 0: # Minimum lot must be positive for a valid trade
-        logger.debug(f"[{symbol_name}] Invalid volume_min ({symbol_props['volume_min']}). Skipping lot calculation.")
-        return 0
-    # volume_step is guaranteed to be > 0 by initialization logic (defaults to 0.01)
-
-    asset_class = "FOREX" 
-    symbol_upper = symbol_name.upper()
-    
-    # Classify asset (Crypto takes precedence if "BTC" or "ETH" is in name, e.g. BTCXAG)
-    if "BTC" in symbol_upper or "ETH" in symbol_upper:
-        asset_class = "CRYPTO"
-    elif symbol_upper in COMMODITY_SYMBOLS_LIST: 
-        asset_class = "COMMODITY"
-
-    # Determine lot precision for rounding (using original code's method)
-    lot_precision = int(-math.log10(symbol_props['volume_step'])) if symbol_props['volume_step'] > 0 else 2
-
-    # --- Logic for Crypto and Commodities: Fixed minimum lot, check risk threshold ---
-    if asset_class == "CRYPTO" or asset_class == "COMMODITY":
-        min_lot_size = symbol_props['volume_min']
-        
-        sl_distance_ticks = sl_price_diff / symbol_props['trade_tick_size']
-        # trade_tick_value is the value of one tick for a position with volume 1 (1 lot)
-        cost_per_tick_per_lot = symbol_props['trade_tick_value'] 
-        
-        potential_loss_with_min_lot = sl_distance_ticks * cost_per_tick_per_lot * min_lot_size
-        
-        max_allowed_loss_abs = account_balance_for_risk_calc * risk_percent_config # Use configured risk_percent as threshold
-
-        if potential_loss_with_min_lot <= max_allowed_loss_abs + 1e-9: # Add tolerance for float comparison
-            # logger.debug(f"[{symbol_name}] {asset_class} trade with min_lot {min_lot_size}. Potential loss {potential_loss_with_min_lot:.2f} <= Allowed {max_allowed_loss_abs:.2f}.")
-            return round(min_lot_size, lot_precision)
-        else:
-            logger.debug(f"[{symbol_name}] Trade SKIPPED for {asset_class}. Loss with min_lot {min_lot_size} ({potential_loss_with_min_lot:.2f}) exceeds risk limit {risk_percent_config*100:.2f}% ({max_allowed_loss_abs:.2f}).")
-            return 0
-            
-    # --- Logic for Forex: Risk-based lot sizing ---
-    else: # FOREX
-        risk_amount_currency = account_balance_for_risk_calc * risk_percent_config
-        
-        sl_distance_ticks = sl_price_diff / symbol_props['trade_tick_size']
-        sl_cost_per_lot = sl_distance_ticks * symbol_props['trade_tick_value'] # Cost of SL hit for 1 lot volume
-
-        if sl_cost_per_lot <= 1e-9: # Effectively zero or negative cost per lot
-            logger.debug(f"[{symbol_name}] Trade SKIPPED for FOREX. SL cost per lot is negligible or zero ({sl_cost_per_lot}).")
-            return 0
-
-        ideal_lot_size = risk_amount_currency / sl_cost_per_lot
-        
-        # Align to volume step (floor to be conservative with risk)
-        calculated_lot_size_stepped = math.floor(ideal_lot_size / symbol_props['volume_step']) * symbol_props['volume_step']
-        
-        final_lot_size = 0
-        if calculated_lot_size_stepped >= symbol_props['volume_min']:
-            final_lot_size = calculated_lot_size_stepped
-        else: 
-            # Ideal lot is smaller than volume_min, so we must consider volume_min
-            final_lot_size = symbol_props['volume_min']
-            # Check if risk with this volume_min (which is final_lot_size here) is acceptable (not > 1.5x target)
-            risk_with_this_lot = final_lot_size * sl_cost_per_lot
-            if risk_with_this_lot > risk_amount_currency * 1.5 + 1e-9: # Add tolerance
-                logger.debug(f"[{symbol_name}] Trade SKIPPED for FOREX. Ideal lot {ideal_lot_size:.4f} (stepped: {calculated_lot_size_stepped:.4f}) too small. Risk with min_lot {final_lot_size} ({risk_with_this_lot:.2f}) is >1.5x target risk ({risk_amount_currency:.2f}).")
-                return 0
-            # logger.debug(f"[{symbol_name}] Using min_lot {final_lot_size} for FOREX. Ideal lot {ideal_lot_size:.4f} was too small. Risk with lot: {risk_with_this_lot:.2f}")
-
-        # Ensure not over volume_max
-        final_lot_size = min(symbol_props['volume_max'], final_lot_size)
-
-        # Final sanity checks
-        if final_lot_size < symbol_props['volume_min'] and symbol_props['volume_min'] > 0: 
-            # This can happen if volume_max < volume_min, making final_lot_size capped by a smaller volume_max
-            logger.debug(f"[{symbol_name}] Trade SKIPPED for FOREX. Final lot size {final_lot_size:.{lot_precision}f} is less than min_lot {symbol_props['volume_min']:.{lot_precision}f} (possibly vol_max < vol_min, or vol_min is not multiple of vol_step and flooring made it smaller).")
-            return 0
-        
-        if final_lot_size <= 1e-9: # If lot is effectively zero
-            logger.debug(f"[{symbol_name}] Trade SKIPPED for FOREX. Final lot size is zero or negligible ({final_lot_size:.{lot_precision}f}).")
-            return 0
-            
-        # logger.debug(f"[{symbol_name}] FOREX trade. Ideal lot {ideal_lot_size:.4f}, Stepped {calculated_lot_size_stepped:.4f}, Final {final_lot_size:.{lot_precision}f}. Risk target {risk_amount_currency:.2f}.")
-        return round(final_lot_size, lot_precision)
+# --- calculate_lot_size is no longer used by the new trade setup logic, but kept for potential future use or other strategies ---
+def calculate_lot_size(account_balance_for_risk_calc, risk_percent, sl_price_diff, symbol_props):
+    if sl_price_diff <= 0: return 0
+    risk_amount_currency = account_balance_for_risk_calc * risk_percent
+    if symbol_props['trade_tick_size'] == 0 or symbol_props['trade_tick_value'] == 0: return 0
+    sl_distance_ticks = sl_price_diff / symbol_props['trade_tick_size']
+    sl_cost_per_lot = sl_distance_ticks * symbol_props['trade_tick_value']
+    if sl_cost_per_lot <= 0: return 0
+    lot_size = risk_amount_currency / sl_cost_per_lot
+    lot_size = max(symbol_props['volume_min'], lot_size)
+    lot_size = math.floor(lot_size / symbol_props['volume_step']) * symbol_props['volume_step']
+    lot_size = min(symbol_props['volume_max'], lot_size)
+    if lot_size < symbol_props['volume_min']:
+        if symbol_props['volume_min'] * sl_cost_per_lot > risk_amount_currency * 1.5:
+            return 0 
+        return symbol_props['volume_min']
+    return round(lot_size, int(-math.log10(symbol_props['volume_step'])) if symbol_props['volume_step'] > 0 else 2)
 
 
 # --- Performance Statistics Calculation ---
@@ -334,16 +260,20 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         combined_df['H4_EMA8'] = np.nan
         combined_df['H4_EMA21'] = np.nan
         
-    combined_df.dropna(inplace=True) 
+    combined_df.dropna(subset=['open', 'high', 'low', 'close', # M5 Base
+                                'M5_EMA8', 'M5_EMA13', 'M5_EMA21', 'ATR', # M5 Indicators
+                                'H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', # H1 Indicators
+                                'H4_EMA8', 'H4_EMA21'], # H4 Indicators
+                       how='any', inplace=True) # Drop if any of these critical indicators are NaN
     return combined_df
 
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1) 
-    end_datetime = datetime(2025, 5, 31) 
+    start_datetime = datetime(2025, 1, 1) 
+    end_datetime = datetime(2025, 1, 30) 
     
-    buffer_days = 15 
+    buffer_days = 30 # Increased buffer for ATR and longer EMAs to stabilize
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
 
     if not initialize_mt5_interface(SYMBOLS_TO_BACKTEST):
@@ -363,7 +293,7 @@ if __name__ == "__main__":
 
         logger.info(f"Global Initial Account Balance: {shared_account_balance:.2f} USD")
         logger.info(f"Backtesting Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
-        logger.info(f"Risk per trade: {RISK_PER_TRADE_PERCENT*100:.2f}%, Daily Risk Limit: {DAILY_RISK_LIMIT_PERCENT*100:.2f}%")
+        logger.info(f"Risk Filter for Min Lot: {MIN_RISK_PER_TRADE_PERCENT_FOR_MIN_LOT*100:.2f}% - {RISK_PER_TRADE_PERCENT*100:.2f}%, Daily Risk Limit: {DAILY_RISK_LIMIT_PERCENT*100:.2f}%")
         logger.info("One trade at a time across the entire portfolio.")
 
         prepared_symbol_data = {}
@@ -377,7 +307,7 @@ if __name__ == "__main__":
                     prepared_symbol_data[sym] = df 
                     master_time_index_set.update(df_filtered_for_index.index)
                 else:
-                    logger.warning(f"No data for {sym} within the backtest period {start_datetime} - {end_datetime} after initial buffer fetch. Skipping.")
+                    logger.warning(f"No data for {sym} within the backtest period {start_datetime} - {end_datetime} after initial buffer fetch and NaN drop. Skipping.")
             else:
                 logger.warning(f"No data prepared for {sym}, it will be skipped in simulation.")
         
@@ -439,30 +369,56 @@ if __name__ == "__main__":
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
                         global_active_trade = None
                     
-                    if global_active_trade and not closed_this_bar: 
-                        if not global_active_trade['trailing_active']:
-                            if (global_active_trade['type']=="BUY" and current_candle_for_active_trade['high']>=global_active_trade['ts_activation_price']) or \
-                               (global_active_trade['type']=="SELL" and current_candle_for_active_trade['low']<=global_active_trade['ts_activation_price']):
-                                global_active_trade['trailing_active']=True
-                                logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED. SL was {global_active_trade['sl']:.{props['digits']}f}")
-                        
-                        if global_active_trade['trailing_active']:
-                            symbol_df = prepared_symbol_data[trade_symbol]
-                            try:
-                                current_idx_in_symbol_df = symbol_df.index.get_loc(timestamp)
-                                if current_idx_in_symbol_df >= 2: 
-                                    last_3_candles = symbol_df.iloc[max(0, current_idx_in_symbol_df-2) : current_idx_in_symbol_df+1]
-                                    
-                                    if global_active_trade['type']=="BUY":
-                                        new_sl = last_3_candles['low'].min() - pip_adj_tsl
-                                        if new_sl > global_active_trade['sl']: 
-                                            global_active_trade['sl'] = round(new_sl, props['digits'])
-                                    else: # SELL
-                                        new_sl = last_3_candles['high'].max() + pip_adj_tsl
-                                        if new_sl < global_active_trade['sl']: 
-                                            global_active_trade['sl'] = round(new_sl, props['digits'])
-                            except KeyError:
-                                logger.warning(f"Timestamp {timestamp} not found in {trade_symbol} df for trailing SL, skipping TSL update.")
+                    if global_active_trade and not closed_this_bar:
+                        current_price_for_ts = current_candle_for_active_trade['high'] if global_active_trade['type'] == "BUY" else current_candle_for_active_trade['low']
+                        entry_price_ts = global_active_trade['entry_price']
+                        r_diff_ts = global_active_trade['r_value_price_diff']
+                        ts_levels_ts = global_active_trade['ts_trigger_levels']
+                        current_ts_level_idx = global_active_trade['next_ts_level_idx']
+
+                        if current_ts_level_idx < len(ts_levels_ts):
+                            r_multiple_target = ts_levels_ts[current_ts_level_idx]
+                            target_price_for_ts_level = 0
+                            if global_active_trade['type'] == "BUY":
+                                target_price_for_ts_level = entry_price_ts + (r_multiple_target * r_diff_ts)
+                            else: # SELL
+                                target_price_for_ts_level = entry_price_ts - (r_multiple_target * r_diff_ts)
+
+                            price_hit_ts_level = False
+                            if global_active_trade['type'] == "BUY" and current_price_for_ts >= target_price_for_ts_level:
+                                price_hit_ts_level = True
+                            elif global_active_trade['type'] == "SELL" and current_price_for_ts <= target_price_for_ts_level:
+                                price_hit_ts_level = True
+
+                            if price_hit_ts_level:
+                                if not global_active_trade['trailing_active']:
+                                    global_active_trade['trailing_active'] = True
+                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+                                else:
+                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop Update Triggered at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+
+                                symbol_df_for_tsl = prepared_symbol_data[trade_symbol]
+                                try:
+                                    current_idx_in_symbol_df_tsl = symbol_df_for_tsl.index.get_loc(timestamp)
+                                    if current_idx_in_symbol_df_tsl >= 2: 
+                                        last_3_candles_tsl = symbol_df_for_tsl.iloc[max(0, current_idx_in_symbol_df_tsl - 2) : current_idx_in_symbol_df_tsl + 1]
+                                        new_sl_ts = 0
+                                        if global_active_trade['type'] == "BUY":
+                                            new_sl_ts = last_3_candles_tsl['low'].min() - pip_adj_tsl
+                                            if new_sl_ts > global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
+                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated BUY: New SL {global_active_trade['sl']:.{props['digits']}f}")
+                                        else: # SELL
+                                            new_sl_ts = last_3_candles_tsl['high'].max() + pip_adj_tsl
+                                            if new_sl_ts < global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
+                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated SELL: New SL {global_active_trade['sl']:.{props['digits']}f}")
+                                    else:
+                                        logger.debug(f"[{trade_symbol}] {timestamp} Not enough preceding candles for TSL adjustment at {r_multiple_target}R.")
+                                except KeyError:
+                                    logger.warning(f"Timestamp {timestamp} not found in {trade_symbol} df for TSL, skipping TSL update for level {r_multiple_target}R.")
+                                global_active_trade['next_ts_level_idx'] += 1
+
 
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
@@ -499,32 +455,41 @@ if __name__ == "__main__":
                         if triggered:
                             logger.info(f"[{order_symbol}] {timestamp} PENDING {order_type_pending} TRIGGERED @{actual_entry_price:.{props['digits']}f} Lot:{lot_size_pending}")
                             
-                            risk_val_diff = abs(actual_entry_price - sl_price_pending) 
+                            r_value_diff_for_active_trade = global_pending_order['r_value_price_diff_initial_calc']
                             
-                            if risk_val_diff <= 0 or lot_size_pending <= 0:
-                                logger.warning(f"[{order_symbol}] Invalid risk (diff {risk_val_diff}) /lot ({lot_size_pending}) on trigger. Cancelling order and refunding risk.")
+                            tp_price_active = 0
+                            if order_type_pending == "BUY_STOP": # Actual trade is BUY
+                                tp_price_active = actual_entry_price + (4 * r_value_diff_for_active_trade)
+                            else: # SELL_STOP, actual trade is SELL
+                                tp_price_active = actual_entry_price - (4 * r_value_diff_for_active_trade)
+                            tp_price_active = round(tp_price_active, props['digits'])
+
+                            final_sl_for_active_trade = sl_price_pending 
+
+                            if (order_type_pending == "BUY_STOP" and actual_entry_price <= final_sl_for_active_trade) or \
+                               (order_type_pending == "SELL_STOP" and actual_entry_price >= final_sl_for_active_trade) or \
+                               r_value_diff_for_active_trade <= (props['trade_tick_size'] * 2): # Min 2 ticks SL distance
+                                logger.warning(f"[{order_symbol}] Invalid SL/Entry ({actual_entry_price:.{props['digits']}f} vs {final_sl_for_active_trade:.{props['digits']}f}) or R-diff ({r_value_diff_for_active_trade:.{props['digits']}f}) on trigger. Cancelling order and refunding risk.")
                                 daily_risk_allocated_on_current_date -= global_pending_order['intended_risk_amount'] 
                                 global_pending_order = None
                             else:
-                                tp_price = actual_entry_price + (3 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (3 * risk_val_diff)
-                                tp_price = round(tp_price, props['digits'])
-
                                 global_active_trade = {
                                     "symbol": order_symbol,
                                     "type": "BUY" if order_type_pending=="BUY_STOP" else "SELL",
                                     "entry_time": timestamp,
                                     "entry_price": actual_entry_price,
-                                    "sl": sl_price_pending, 
-                                    "initial_sl": sl_price_pending,
-                                    "tp": tp_price, 
-                                    "r_value_price_diff": risk_val_diff, 
-                                    "trailing_active": False,
-                                    "ts_activation_price": actual_entry_price + (1.5 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (1.5 * risk_val_diff),
+                                    "sl": final_sl_for_active_trade, 
+                                    "initial_sl": final_sl_for_active_trade,
+                                    "tp": tp_price_active, 
+                                    "r_value_price_diff": r_value_diff_for_active_trade, 
                                     "status": "OPEN",
                                     "lot_size": lot_size_pending,
-                                    "pnl_currency": 0.0
+                                    "pnl_currency": 0.0,
+                                    "trailing_active": False,
+                                    "ts_trigger_levels": global_pending_order['ts_trigger_levels_pending'],
+                                    "next_ts_level_idx": global_pending_order['next_ts_level_idx_pending'],
                                 }
-                                logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
+                                logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {global_active_trade['r_value_price_diff']:.{props['digits']}f}, Lot: {global_active_trade['lot_size']}")
                                 if order_symbol not in symbol_conceptual_start_balances:
                                     symbol_conceptual_start_balances[order_symbol] = shared_account_balance 
                                 global_pending_order = None
@@ -537,7 +502,8 @@ if __name__ == "__main__":
                     current_candle_for_setup = prepared_symbol_data[sym_to_check_setup].loc[timestamp]
                     props_setup = ALL_SYMBOL_PROPERTIES[sym_to_check_setup]
                     
-                    pip_adj_setup = 3 * props_setup['trade_tick_size'] 
+                    # Used for entry trigger adjustment (e.g., 3 ticks beyond high/low)
+                    pip_adj_entry_trigger = 3 * props_setup['trade_tick_size'] 
 
                     h1_trend_bias_setup = None
                     m5_setup_bias_setup = None 
@@ -561,7 +527,7 @@ if __name__ == "__main__":
                     is_fanned_for_bias = (h1_trend_bias_setup=="BUY" and m5_fanned_buy) or (h1_trend_bias_setup=="SELL" and m5_fanned_sell)
                     if not is_fanned_for_bias: continue
                     
-                    m5_setup_bias_setup = h1_trend_bias_setup 
+                    m5_setup_bias_setup = h1_trend_bias_setup # This is the trade_direction
 
                     h4_ema8 = current_candle_for_setup.get('H4_EMA8', np.nan) 
                     h4_ema21 = current_candle_for_setup.get('H4_EMA21', np.nan)
@@ -582,62 +548,147 @@ if __name__ == "__main__":
                     if pd.isna(atr_val) or atr_val <= 0:
                         continue
                     
-                    sl_distance_atr = 1.5 * atr_val 
-
                     symbol_df_for_lookback = prepared_symbol_data[sym_to_check_setup]
                     try:
                         current_idx_in_symbol_df_for_lookback = symbol_df_for_lookback.index.get_loc(timestamp)
                     except KeyError: continue 
 
-                    if current_idx_in_symbol_df_for_lookback < 4: 
+                    if current_idx_in_symbol_df_for_lookback < 4: # Need 5 candles for lookback_df (0 to 4)
                         continue
                     
-                    lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-4 : current_idx_in_symbol_df_for_lookback+1]
-                    
-                    entry_px, sl_px, order_type_setup = (0,0,"")
+                    # lookback_df_for_entry includes the current candle_for_setup
+                    lookback_df_for_entry = symbol_df_for_lookback.iloc[max(0, current_idx_in_symbol_df_for_lookback - 4) : current_idx_in_symbol_df_for_lookback + 1]
+                    if len(lookback_df_for_entry) < 5: continue # Ensure 5 candles for swing high/low
 
-                    if m5_setup_bias_setup=="BUY":
-                        entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup 
-                        sl_px = entry_px - sl_distance_atr                          
-                        order_type_setup="BUY_STOP"
-                    else: # SELL
-                        entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup 
-                        sl_px = entry_px + sl_distance_atr                         
-                        order_type_setup="SELL_STOP"
-                    
-                    entry_px=round(entry_px, props_setup['digits'])
-                    sl_px=round(sl_px, props_setup['digits'])
-                    
-                    sl_diff = abs(entry_px - sl_px) 
+                    # === START OF NEW LOGIC INTEGRATION ===
+                    # === 1. Get symbol properties ===
+                    volume_min_lot = props_setup.get("volume_min", 0.01)
+                    lot_size_trade = volume_min_lot # Fixed lot size
+                    digits_trade = props_setup["digits"]
+                    tick_val_trade = props_setup["trade_tick_value"]
+                    tick_size_trade = props_setup["trade_tick_size"]
+                    pip_value_trade = props_setup["pip_value_calc"]
 
-                    if sl_diff <= 0: 
+                    trade_direction_setup = m5_setup_bias_setup # "BUY" or "SELL"
+
+                    # Calculate entry trigger price (for stop order)
+                    entry_px_trigger = 0
+                    order_type_setup = ""
+                    if trade_direction_setup == "BUY":
+                        entry_px_trigger = lookback_df_for_entry['high'].max() + pip_adj_entry_trigger
+                        order_type_setup = "BUY_STOP"
+                    elif trade_direction_setup == "SELL":
+                        entry_px_trigger = lookback_df_for_entry['low'].min() - pip_adj_entry_trigger
+                        order_type_setup = "SELL_STOP"
+                    else: # Should not happen due to earlier checks
+                        logger.warning(f"[{sym_to_check_setup}] {timestamp} Unknown trade direction '{trade_direction_setup}'. Skipping.")
+                        continue
+                    entry_px_trigger = round(entry_px_trigger, digits_trade)
+
+                    # === 2. SL Distance from ATR ===
+                    atr_multiplier = 1.5
+                    atr_sl_price_diff = atr_multiplier * atr_val
+
+                    # === 3. Swing High/Low based SL Component ===
+                    sl_buffer_pips = 3 
+                    sl_buffer_price_units = sl_buffer_pips * pip_value_trade # Buffer in price terms
+
+                    raw_sl_price_trade = 0
+                    sl_price_diff_trade = 0 # This is the R-value distance
+                    # tp_price_trade will be calculated after sl_price_diff_trade
+
+                    if trade_direction_setup == "BUY":
+                        swing_sl_price = lookback_df_for_entry['low'].min() - sl_buffer_price_units
+                        atr_sl_price = entry_px_trigger - atr_sl_price_diff
+                        raw_sl_price_trade = min(atr_sl_price, swing_sl_price) # Wider stop
+                        sl_price_diff_trade = entry_px_trigger - raw_sl_price_trade
+                    elif trade_direction_setup == "SELL":
+                        swing_sl_price = lookback_df_for_entry['high'].max() + sl_buffer_price_units
+                        atr_sl_price = entry_px_trigger + atr_sl_price_diff
+                        raw_sl_price_trade = max(atr_sl_price, swing_sl_price) # Wider stop
+                        sl_price_diff_trade = raw_sl_price_trade - entry_px_trigger
+                    
+                    if sl_price_diff_trade <= (tick_size_trade * 2): # Min SL distance, e.g. 2 ticks
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} SL distance too small ({sl_price_diff_trade:.{digits_trade}f}) for {trade_direction_setup}. Entry: {entry_px_trigger:.{digits_trade}f}, RawSL: {raw_sl_price_trade:.{digits_trade}f}. Skipping.")
+                        continue
+
+                    tp_price_trade = 0
+                    if trade_direction_setup == "BUY":
+                        tp_price_trade = entry_px_trigger + 4 * sl_price_diff_trade
+                    elif trade_direction_setup == "SELL":
+                        tp_price_trade = entry_px_trigger - 4 * sl_price_diff_trade
+
+
+                    # === 4. Risk Estimation (using min_lot) ===
+                    account_balance_for_risk_est = shared_account_balance
+                    risk_usd_trade = 0
+                    if tick_size_trade > 0 and tick_val_trade > 0:
+                        risk_usd_trade = lot_size_trade * (sl_price_diff_trade / tick_size_trade) * tick_val_trade
+                    else:
+                        logger.warning(f"[{sym_to_check_setup}] {timestamp} Tick size or value is zero. Cannot calculate risk. Skipping.")
                         continue
                     
-                    intended_risk_amount_this_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
-                    if daily_risk_allocated_on_current_date + intended_risk_amount_this_trade > max_daily_risk_budget_for_current_date + 1e-9: 
+                    risk_pct_trade = risk_usd_trade / account_balance_for_risk_est if account_balance_for_risk_est > 0 else float('inf')
+
+                    # === 5. Risk Filters ===
+                    if risk_pct_trade > RISK_PER_TRADE_PERCENT:
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} SKIP PENDING: Risk with min lot ({risk_pct_trade:.2%}) > max_risk_target ({RISK_PER_TRADE_PERCENT:.2%}). SL Diff: {sl_price_diff_trade:.{digits_trade}f}, Lot: {lot_size_trade}")
+                        continue
+                    elif risk_pct_trade < MIN_RISK_PER_TRADE_PERCENT_FOR_MIN_LOT:
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} SKIP PENDING: Risk with min lot ({risk_pct_trade:.2%}) < min_risk_target ({MIN_RISK_PER_TRADE_PERCENT_FOR_MIN_LOT:.2%}). SL Diff: {sl_price_diff_trade:.{digits_trade}f}, Lot: {lot_size_trade}")
+                        continue
+                    
+                    # Daily risk check using the calculated risk_usd_trade
+                    if daily_risk_allocated_on_current_date + risk_usd_trade > max_daily_risk_budget_for_current_date + 1e-9: 
                         logger.info(f"[{sym_to_check_setup}] {timestamp} Portfolio Daily Risk Limit Reached for {current_simulation_date}. "
                                     f"Max: {max_daily_risk_budget_for_current_date:.2f}, "
                                     f"Allocated: {daily_risk_allocated_on_current_date:.2f}, "
-                                    f"Intended for this trade: {intended_risk_amount_this_trade:.2f}. Skipping trade.")
+                                    f"Intended for this trade: {risk_usd_trade:.2f}. Skipping trade.")
                         continue 
 
-                    # Pass symbol name (sym_to_check_setup) to calculate_lot_size
-                    calc_lot = calculate_lot_size(shared_account_balance, RISK_PER_TRADE_PERCENT, sl_diff, props_setup, sym_to_check_setup)
-                    
-                    if calc_lot <= 0:
-                        logger.debug(f"[{sym_to_check_setup}] {timestamp} Calculated lot size is {calc_lot} (or 0 due to risk rules). SL diff: {sl_diff:.{props_setup['digits']}f}. Skipping.")
+                    # === 6. Round SL/TP ===
+                    # entry_px_trigger is already rounded
+                    final_sl_price = round(raw_sl_price_trade, digits_trade)
+                    final_tp_price = round(tp_price_trade, digits_trade)
+
+                    # Final check: SL should not have rounded through entry
+                    if trade_direction_setup == "BUY" and final_sl_price >= entry_px_trigger:
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} BUY SL ({final_sl_price:.{digits_trade}f}) rounded to be >= Entry ({entry_px_trigger:.{digits_trade}f}). Skipping.")
+                        continue
+                    if trade_direction_setup == "SELL" and final_sl_price <= entry_px_trigger:
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} SELL SL ({final_sl_price:.{digits_trade}f}) rounded to be <= Entry ({entry_px_trigger:.{digits_trade}f}). Skipping.")
                         continue
                     
-                    global_pending_order = {"symbol":sym_to_check_setup, "type":order_type_setup, 
-                                            "entry_price":entry_px, "sl_price":sl_px, 
-                                            "created_time":timestamp, "lot_size":calc_lot,
-                                            "setup_bias": m5_setup_bias_setup, 
-                                            "intended_risk_amount": intended_risk_amount_this_trade} 
+                    # Final check: TP should not be at or worse than entry
+                    if trade_direction_setup == "BUY" and final_tp_price <= entry_px_trigger:
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} BUY TP ({final_tp_price:.{digits_trade}f}) rounded to be <= Entry ({entry_px_trigger:.{digits_trade}f}). Skipping.")
+                        continue
+                    if trade_direction_setup == "SELL" and final_tp_price >= entry_px_trigger:
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} SELL TP ({final_tp_price:.{digits_trade}f}) rounded to be >= Entry ({entry_px_trigger:.{digits_trade}f}). Skipping.")
+                        continue
+
+
+                    # === 7. Place Trade (Create Pending Order) ===
+                    global_pending_order = {
+                        "symbol": sym_to_check_setup,
+                        "type": order_type_setup, # BUY_STOP or SELL_STOP
+                        "entry_price": entry_px_trigger, 
+                        "sl_price": final_sl_price,
+                        "tp_price_initial_calc": final_tp_price, # For active trade creation
+                        "lot_size": lot_size_trade, 
+                        "r_value_price_diff_initial_calc": sl_price_diff_trade, # For active trade
+                        "created_time": timestamp,
+                        "setup_bias": trade_direction_setup, # "BUY" or "SELL"
+                        "intended_risk_amount": risk_usd_trade,
+                        "ts_trigger_levels_pending": [1.5, 2.0, 2.5, 3.0, 3.5], # From snippet
+                        "next_ts_level_idx_pending": 0 # From snippet
+                    }
                     
-                    daily_risk_allocated_on_current_date += intended_risk_amount_this_trade
-                    logger.info(f"[{sym_to_check_setup}] {timestamp} GLOBAL PENDING {order_type_setup} Order Set: Entry {entry_px:.{props_setup['digits']}f}, SL {sl_px:.{props_setup['digits']}f} (ATR: {atr_val:.{props_setup['digits']}f}), Lot {calc_lot}")
+                    daily_risk_allocated_on_current_date += risk_usd_trade
+                    logger.info(f"[{sym_to_check_setup}] {timestamp} GLOBAL PENDING {order_type_setup} Order Set: Entry {entry_px_trigger:.{digits_trade}f}, SL {final_sl_price:.{digits_trade}f}, TP (calc) {final_tp_price:.{digits_trade}f}, Lot {lot_size_trade}, Risk {risk_pct_trade:.2%} ({risk_usd_trade:.2f} USD)")
                     logger.debug(f"  Portfolio daily risk allocated: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
-                    break 
+                    break # Found a trade setup, exit symbol loop for this timestamp
+                    # === END OF NEW LOGIC INTEGRATION ===
         
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
 
@@ -686,5 +737,5 @@ if __name__ == "__main__":
             logger.info("No trades were executed across any symbols during the backtest period.")
             logger.info(f"Overall Starting Balance: {INITIAL_ACCOUNT_BALANCE:.2f} USD")
             logger.info(f"Overall Ending Balance: {shared_account_balance:.2f} USD")
-
+ 
         shutdown_mt5_interface()

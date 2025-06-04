@@ -265,8 +265,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 5, 1) 
-    end_datetime = datetime(2025, 5, 31) 
+    start_datetime = datetime(2025, 1, 1) 
+    end_datetime = datetime(2025, 1, 30) 
     
     buffer_days = 15 
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
