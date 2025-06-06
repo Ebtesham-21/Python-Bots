@@ -24,13 +24,13 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 16)], "GBPUSD": [(7, 16)], "AUDUSD": [(0, 4), (7, 16)],
-    "USDCHF": [(7, 16)], "USDCAD": [(12, 17)], "USDJPY": [(0, 4), (12, 17)],
+    "USDCHF": [(7, 16)], "USDCAD": [(12, 16)], "USDJPY": [(0, 4), (12, 16)],
     "EURJPY": [(0, 4), (7, 12)], "GBPJPY": [(7, 16)], "NZDUSD": [(0, 4), (7, 16)],
-    "EURCHF": [(7, 12)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 17)],
+    "EURCHF": [(7, 12)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 16)],
     "EURNZD": [(0, 4), (7, 12)], "GBPNZD": [(7, 12)], "XAUUSD": [(7, 16)],
     "XAGUSD": [(7, 16)], "XPTUSD": [(7, 16)], "XAGGBP":[(7, 16)], "XAGEUR":[(7,16)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,16)]
 }
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 17)]
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
 TRADING_SESSIONS_UTC["UKOIL"] = [(7, 16)]
 CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 16)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
