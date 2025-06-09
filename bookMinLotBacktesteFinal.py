@@ -17,10 +17,17 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
-                         "NZDUSD", "EURCHF", "AUDJPY",
-                       "USOIL", "CADJPY",  "XPTUSD", "UKOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "XAGGBP", "XAGEUR", "XAGAUD", "BTCXAG" ]
+SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" , "EURNZD", "USDCAD",    ]
+
+#  ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" ,   ]
+
+
+
+                    # ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
+                    #    "GBPJPY",  "NZDUSD", "EURCHF", "AUDJPY", "EURNZD", "GBPNZD",
+                    #    "USOIL", "CADJPY", "XAGUSD", "XPTUSD", "UKOIL",
+                    #    "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "XAGGBP", "XAGEUR", "XAGAUD", "BTCXAG" ]
+
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 16)], "GBPUSD": [(7, 16)], "AUDUSD": [(0, 4), (7, 16)],

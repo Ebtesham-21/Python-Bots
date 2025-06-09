@@ -270,7 +270,7 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1) 
+    start_datetime = datetime(2025, 5, 1) 
     end_datetime = datetime(2025, 5, 31) 
     
     buffer_days = 30 # Increased buffer for ATR and longer EMAs to stabilize
