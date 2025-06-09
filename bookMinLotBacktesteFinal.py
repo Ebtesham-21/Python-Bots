@@ -17,7 +17,7 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" , "EURNZD", "USDCAD",    ]
+SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY",  "EURUSD" , "USDCAD"    ]
 
 #  ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" ,   ]
 
@@ -311,8 +311,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1)
-    end_datetime = datetime(2025, 5, 31)
+    start_datetime = datetime(2025, 6, 1)
+    end_datetime = datetime(2025, 6, 8)
 
     buffer_days = 15
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
