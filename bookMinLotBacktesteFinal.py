@@ -17,7 +17,7 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY",  "EURUSD" , "USDCAD"    ]
+SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL",  "AUDJPY",  "USDCAD"    ]
 
 #  ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" ,   ]
 
@@ -206,6 +206,72 @@ def calculate_performance_stats(trades_list, initial_balance_for_period):
         stats["max_drawdown_pct"] = 0.0
     return stats
 
+def analyze_rr_distribution(closed_trades, symbol_properties_dict):
+    """
+    Analyzes the distribution of closed trades based on their Risk-to-Reward ratio.
+
+    Args:
+        closed_trades (list): A list of closed trade dictionaries.
+        symbol_properties_dict (dict): A dictionary containing properties for all symbols.
+
+    Returns:
+        dict: A dictionary with RR buckets as keys and trade counts as values.
+    """
+    rr_buckets = {
+        "Stop Loss (~ -1R)": 0,
+        "Partial Loss (< 0R)": 0,
+        "Break Even (0R to <1R)": 0,
+        "1R to <2R": 0,
+        "2R to <3R": 0,
+        "3R to <4R": 0,
+        "Take Profit (>= 4R)": 0,
+        "Other/Error": 0
+    }
+
+    if not closed_trades:
+        return rr_buckets
+
+    for trade in closed_trades:
+        symbol = trade.get('symbol')
+        props = symbol_properties_dict.get(symbol)
+        if not props:
+            rr_buckets["Other/Error"] += 1
+            continue
+
+        pnl = trade.get('pnl_currency', 0.0)
+        # Use 'initial_sl' to ensure we calculate against the original risk
+        initial_risk_price_diff = abs(trade.get('entry_price', 0) - trade.get('initial_sl', 0))
+        
+        if initial_risk_price_diff <= 0 or props.get('trade_tick_size', 0) <= 0:
+            rr_buckets["Other/Error"] += 1
+            continue
+
+        initial_risk_currency = (initial_risk_price_diff / props['trade_tick_size']) * props['trade_tick_value'] * trade.get('lot_size', 0)
+
+        if initial_risk_currency <= 0:
+            rr_buckets["Other/Error"] += 1
+            continue
+            
+        rr_value = pnl / initial_risk_currency
+
+        # Correctly categorize the RR value into buckets
+        if rr_value >= 4.0:
+            rr_buckets["Take Profit (>= 4R)"] += 1
+        elif 3.0 <= rr_value < 4.0:
+            rr_buckets["3R to <4R"] += 1
+        elif 2.0 <= rr_value < 3.0:
+            rr_buckets["2R to <3R"] += 1
+        elif 1.0 <= rr_value < 2.0:
+            rr_buckets["1R to <2R"] += 1
+        elif 0.0 <= rr_value < 1.0:
+            rr_buckets["Break Even (0R to <1R)"] += 1
+        elif abs(rr_value + 1.0) < 0.05: # If RR is very close to -1
+            rr_buckets["Stop Loss (~ -1R)"] += 1
+        else: # Any other loss that wasn't a clean stop out (e.g., trailing stop hit for a loss)
+            rr_buckets["Partial Loss (< 0R)"] += 1
+            
+    return rr_buckets
+
 # --- Data Fetching and Preparation ---
 def get_historical_data(symbol, timeframe, start_date, end_date):
     rates = mt5.copy_rates_range(symbol, timeframe, start_date, end_date)
@@ -311,8 +377,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 6, 1)
-    end_datetime = datetime(2025, 6, 8)
+    start_datetime = datetime(2024, 8, 1)
+    end_datetime = datetime(2025, 5, 31)
 
     buffer_days = 15
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
@@ -744,6 +810,10 @@ if __name__ == "__main__":
         if all_closed_trades_portfolio:
             all_closed_trades_portfolio.sort(key=lambda x: x['entry_time'])
             overall_stats = calculate_performance_stats(all_closed_trades_portfolio, INITIAL_ACCOUNT_BALANCE)
+            
+            # --- NEW: Call the RR analysis function ---
+            rr_distribution = analyze_rr_distribution(all_closed_trades_portfolio, ALL_SYMBOL_PROPERTIES)
+
             logger.info(f"Tested Symbols: {SYMBOLS_AVAILABLE_FOR_TRADE}")
             logger.info(f"Overall Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
             logger.info(f"Overall Starting Balance: {overall_stats['start_balance']:.2f} USD")
@@ -756,6 +826,15 @@ if __name__ == "__main__":
             logger.info(f"Overall Net Profit: {overall_stats['net_profit']:.2f} USD")
             logger.info(f"Overall Profit Factor: {overall_stats['profit_factor']:.2f}")
             logger.info(f"Overall Max Drawdown: {overall_stats['max_drawdown_abs']:.2f} USD ({overall_stats['max_drawdown_pct']:.2f}%)")
+
+            # --- NEW: Print the RR distribution summary ---
+            logger.info("\n--- RR Distribution Summary ---")
+            total_counted_trades = sum(rr_distribution.values())
+            logger.info(f"  (Analysis based on {total_counted_trades} of {overall_stats['total_trades']} total trades)")
+            for bucket, count in rr_distribution.items():
+                if count > 0: # Only display buckets that have trades in them
+                    percentage = (count / total_counted_trades) * 100 if total_counted_trades > 0 else 0
+                    logger.info(f"  {bucket:<25}: {count:<5} trades ({percentage:.2f}%)")
         else:
             logger.info("No trades were executed across any symbols during the backtest period.")
             logger.info(f"Overall Starting Balance: {INITIAL_ACCOUNT_BALANCE:.2f} USD")
