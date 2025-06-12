@@ -17,17 +17,10 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL",  "AUDJPY",  "USDCAD"    ]
-
-#  ["ETHUSD", "BTCXAU", "BTCJPY", "BTCUSD", "UKOIL", "USOIL", "AUDJPY", "EURCHF", "EURUSD" ,   ]
-
-
-
-                    # ["EURUSD", "AUDUSD", "USDCHF", "USDCAD",
-                    #    "GBPJPY",  "NZDUSD", "EURCHF", "AUDJPY", "EURNZD", "GBPNZD",
-                    #    "USOIL", "CADJPY", "XAGUSD", "XPTUSD", "UKOIL",
-                    #    "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "XAGGBP", "XAGEUR", "XAGAUD", "BTCXAG" ]
-
+SYMBOLS_TO_BACKTEST = ["EURUSD", "AUDUSD", "USDCHF", 
+                           "AUDJPY", "GBPUSD", "USDJPY", 
+                       "USOIL",   
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"  ]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 16)], "GBPUSD": [(7, 16)], "AUDUSD": [(0, 4), (7, 16)],
@@ -47,6 +40,16 @@ for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
 INITIAL_ACCOUNT_BALANCE = 200.00
 RISK_PER_TRADE_PERCENT = 0.01 # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
+
+# --- NEW: Commission Structure ---
+# This dictionary holds the commission cost per trade for the minimum lot size.
+# The bot currently only trades the minimum lot, so this value is applied directly.
+COMMISSIONS = {
+    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10,
+    "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
+    "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
+    "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
+}
 
 
 # --- MT5 Initialization and Shutdown ---
@@ -241,7 +244,7 @@ def analyze_rr_distribution(closed_trades, symbol_properties_dict):
         pnl = trade.get('pnl_currency', 0.0)
         # Use 'initial_sl' to ensure we calculate against the original risk
         initial_risk_price_diff = abs(trade.get('entry_price', 0) - trade.get('initial_sl', 0))
-        
+
         if initial_risk_price_diff <= 0 or props.get('trade_tick_size', 0) <= 0:
             rr_buckets["Other/Error"] += 1
             continue
@@ -251,7 +254,7 @@ def analyze_rr_distribution(closed_trades, symbol_properties_dict):
         if initial_risk_currency <= 0:
             rr_buckets["Other/Error"] += 1
             continue
-            
+
         rr_value = pnl / initial_risk_currency
 
         # Correctly categorize the RR value into buckets
@@ -269,7 +272,7 @@ def analyze_rr_distribution(closed_trades, symbol_properties_dict):
             rr_buckets["Stop Loss (~ -1R)"] += 1
         else: # Any other loss that wasn't a clean stop out (e.g., trailing stop hit for a loss)
             rr_buckets["Partial Loss (< 0R)"] += 1
-            
+
     return rr_buckets
 
 # --- Data Fetching and Preparation ---
@@ -470,11 +473,24 @@ if __name__ == "__main__":
                             pnl_ticks = 0
                             logger.error(f"[{trade_symbol}] trade_tick_size is zero or invalid at PNL calculation.")
 
-                        global_active_trade['pnl_currency'] = pnl_ticks * props['trade_tick_value'] * global_active_trade['lot_size']
+                        # --- MODIFICATION START: Commission Logic ---
+                        # Calculate raw P&L before commission
+                        raw_pnl = pnl_ticks * props['trade_tick_value'] * global_active_trade['lot_size']
+
+                        # Get commission for the symbol. Defaults to 0.0 if symbol not in COMMISSIONS dict.
+                        commission_cost = COMMISSIONS.get(trade_symbol, 0.0)
+
+                        # Store commission and final Net P&L in the trade record
+                        global_active_trade['commission'] = commission_cost
+                        global_active_trade['pnl_currency'] = raw_pnl - commission_cost
+                        # --- MODIFICATION END ---
+
                         shared_account_balance += global_active_trade['pnl_currency']
                         global_active_trade['balance_after_trade'] = shared_account_balance
 
-                        logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): P&L: {global_active_trade['pnl_currency']:.2f}, New Portfolio Bal: {shared_account_balance:.2f}")
+                        # MODIFIED LOGGER: Now shows raw P&L, commission, and net P&L.
+                        logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): Raw P&L: {raw_pnl:.2f}, Comm: {commission_cost:.2f}, Net P&L: {global_active_trade['pnl_currency']:.2f}, New Portfolio Bal: {shared_account_balance:.2f}")
+
                         all_closed_trades_portfolio.append(global_active_trade.copy())
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
                         global_active_trade = None
@@ -579,6 +595,7 @@ if __name__ == "__main__":
                                 tp_price = actual_entry_price + (4 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (4 * risk_val_diff)
                                 tp_price = round(tp_price, props['digits'])
 
+                                # MODIFICATION: Added 'commission': 0.0 to initialize the key
                                 global_active_trade = {
                                     "symbol": order_symbol,
                                     "type": "BUY" if order_type_pending=="BUY_STOP" else "SELL",
@@ -591,6 +608,7 @@ if __name__ == "__main__":
                                     "status": "OPEN",
                                     "lot_size": lot_size_pending,
                                     "pnl_currency": 0.0,
+                                    "commission": 0.0,
                                     "trailing_active": False,
                                     "ts_trigger_levels": [1.0, 1.5, 2.0, 2.5, 3.0, 3.5],
                                     "next_ts_level_idx": 0,
@@ -627,10 +645,14 @@ if __name__ == "__main__":
                     m5_ema8 = current_candle_for_setup['M5_EMA8']; m5_ema13 = current_candle_for_setup['M5_EMA13']; m5_ema21_val = current_candle_for_setup['M5_EMA21']
                     if pd.isna(m5_ema8) or pd.isna(m5_ema13) or pd.isna(m5_ema21_val): continue
 
-                    m5_fanned_buy = m5_ema8>m5_ema13 and m5_ema13>m5_ema21_val
-                    m5_fanned_sell = m5_ema8<m5_ema13 and m5_ema13<m5_ema21_val
-                    is_fanned_for_bias = (h1_trend_bias_setup=="BUY" and m5_fanned_buy) or (h1_trend_bias_setup=="SELL" and m5_fanned_sell)
-                    if not is_fanned_for_bias: continue
+                   # Looser EMA fanning logic for earlier trend detection
+                    m5_fanned_buy = m5_ema8 > m5_ema13 or m5_ema8 > m5_ema21_val
+                    m5_fanned_sell = m5_ema8 < m5_ema13 or m5_ema8 < m5_ema21_val
+                    is_fanned_for_bias = (h1_trend_bias_setup == "BUY" and m5_fanned_buy) or (h1_trend_bias_setup == "SELL" and m5_fanned_sell)
+                    if not is_fanned_for_bias:
+                        logger.debug(f"[{sym_to_check_setup}] {timestamp} M5 EMA structure not aligned enough for {h1_trend_bias_setup} setup. Skipping.")
+                        continue
+
 
                     m5_setup_bias_setup = h1_trend_bias_setup
 
@@ -650,11 +672,11 @@ if __name__ == "__main__":
                         logger.debug(f"[{sym_to_check_setup}] {timestamp} Missing RSI values. Skipping setup.")
                         continue
 
-                    if m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50 and rsi_h4 > 50):
+                    if m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50):
                         logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for BUY. M5:{rsi_m5:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
                         continue
 
-                    if m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50 and rsi_h4 < 50):
+                    if m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50 ):
                         logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for SELL. M5:{rsi_m5:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
                         continue
                     # End of RSI Alignment Check
@@ -718,7 +740,7 @@ if __name__ == "__main__":
                     if current_idx_in_symbol_df_for_lookback < 4:
                         continue
 
-                    lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-4 : current_idx_in_symbol_df_for_lookback+1]
+                    lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-2 : current_idx_in_symbol_df_for_lookback+1]
 
                     entry_px, sl_px, order_type_setup = (0,0,"")
 
@@ -810,7 +832,7 @@ if __name__ == "__main__":
         if all_closed_trades_portfolio:
             all_closed_trades_portfolio.sort(key=lambda x: x['entry_time'])
             overall_stats = calculate_performance_stats(all_closed_trades_portfolio, INITIAL_ACCOUNT_BALANCE)
-            
+
             # --- NEW: Call the RR analysis function ---
             rr_distribution = analyze_rr_distribution(all_closed_trades_portfolio, ALL_SYMBOL_PROPERTIES)
 
