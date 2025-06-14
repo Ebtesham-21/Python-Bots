@@ -17,22 +17,22 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["EURUSD", "AUDUSD", "USDCHF", 
-                           "AUDJPY", "GBPUSD", "USDJPY", 
+SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF", 
+                           "AUDJPY",  "USDJPY", 
                        "USOIL",   
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"  ]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-    "EURUSD": [(7, 16)], "GBPUSD": [(7, 16)], "AUDUSD": [(0, 4), (7, 16)],
-    "USDCHF": [(7, 16)], "USDCAD": [(12, 16)], "USDJPY": [(0, 4), (12, 16)],
-    "EURJPY": [(0, 4), (7, 12)], "GBPJPY": [(7, 16)], "NZDUSD": [(0, 4), (7, 16)],
-    "EURCHF": [(7, 12)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 16)],
-    "EURNZD": [(0, 4), (7, 12)], "GBPNZD": [(7, 12)], "XAUUSD": [(7, 16)],
-    "XAGUSD": [(7, 16)], "XPTUSD": [(7, 16)], "XAGGBP":[(7, 16)], "XAGEUR":[(7,16)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,16)]
+    "EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
+    "USDCHF": [(7, 14)], "USDCAD": [(12, 14)], "USDJPY": [ (12, 14)],
+    "EURJPY": [ (7, 12)], "GBPJPY": [(7, 14)], "NZDUSD": [ (7, 14)],
+    "EURCHF": [(7, 14)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 14)],
+    "EURNZD": [ (7, 14)], "GBPNZD": [(7, 14)], "XAUUSD": [(7, 14)],
+    "XAGUSD": [(7, 14)], "XPTUSD": [(7, 14)], "XAGGBP":[(7, 14)], "XAGEUR":[(7,14)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,14)]
 }
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 16)]
-CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 16)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]}
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 14)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(7, 14)]
+CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 14)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 14)], "ETHUSD":[(7, 14)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
@@ -400,12 +400,16 @@ if __name__ == "__main__":
         current_simulation_date = None
         daily_risk_allocated_on_current_date = 0.0
         max_daily_risk_budget_for_current_date = 0.0
+        
+        # --- NEW: Variable to track consecutive losses
+        consecutive_losses_count = 0 
 
         logger.info(f"Global Initial Account Balance: {shared_account_balance:.2f} USD")
         logger.info(f"Backtesting Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
         logger.info(f"Risk per trade: {RISK_PER_TRADE_PERCENT*100:.2f}%, Daily Risk Limit: {DAILY_RISK_LIMIT_PERCENT*100:.2f}%")
         logger.info("One trade at a time across the entire portfolio.")
         logger.info("Lot size will be fixed to minimum volume. Risk guard active for min lot.")
+        logger.info("--- NEW: Trading will halt for the day after 5 consecutive losses.")
 
 
         prepared_symbol_data = {}
@@ -438,12 +442,14 @@ if __name__ == "__main__":
                 current_simulation_date = candle_date
                 daily_risk_allocated_on_current_date = 0.0
                 max_daily_risk_budget_for_current_date = shared_account_balance * DAILY_RISK_LIMIT_PERCENT
-                logger.debug(f"Portfolio New Day: {current_simulation_date}. Max Daily Risk: {max_daily_risk_budget_for_current_date:.2f} (Bal: {shared_account_balance:.2f}). Daily allocated risk reset.")
+                # --- NEW: Reset the consecutive loss counter at the start of each new day
+                consecutive_losses_count = 0
+                logger.debug(f"Portfolio New Day: {current_simulation_date}. Max Daily Risk: {max_daily_risk_budget_for_current_date:.2f} (Bal: {shared_account_balance:.2f}). Daily risk & loss counters reset.")
 
             if global_active_trade:
                 trade_symbol = global_active_trade['symbol']
                 props = ALL_SYMBOL_PROPERTIES[trade_symbol]
-                pip_adj_tsl = 3 * props['pip_value_calc']
+                pip_adj_tsl = 2 * props['pip_value_calc']
 
 
                 if trade_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[trade_symbol].index:
@@ -486,6 +492,19 @@ if __name__ == "__main__":
                         # --- MODIFICATION END ---
 
                         shared_account_balance += global_active_trade['pnl_currency']
+
+                        # --- NEW: Logic to count consecutive losses ---
+                        if global_active_trade['pnl_currency'] < 0:
+                            consecutive_losses_count += 1
+                            logger.info(f"Loss recorded. Consecutive losses now: {consecutive_losses_count}.")
+                            if consecutive_losses_count >= 5:
+                                logger.warning(f"STOP LOSS LIMIT HIT: {consecutive_losses_count} consecutive losses. No new trades will be initiated for the rest of the day: {current_simulation_date}.")
+                        else: # Win or Break-even
+                            if consecutive_losses_count > 0:
+                                logger.info(f"Winning/BE trade recorded. Resetting consecutive loss counter from {consecutive_losses_count} to 0.")
+                            consecutive_losses_count = 0
+                        # --- END NEW: Consecutive Loss Logic ---
+
                         global_active_trade['balance_after_trade'] = shared_account_balance
 
                         # MODIFIED LOGGER: Now shows raw P&L, commission, and net P&L.
@@ -619,6 +638,10 @@ if __name__ == "__main__":
                                 global_pending_order = None
 
             if not global_active_trade and not global_pending_order:
+                # --- NEW: Check if trading is halted for the day due to consecutive losses
+                if consecutive_losses_count >= 5:
+                    continue # Skip searching for new trades for the rest of this timestamp.
+                
                 for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
                     if sym_to_check_setup not in prepared_symbol_data or timestamp not in prepared_symbol_data[sym_to_check_setup].index:
                         continue
