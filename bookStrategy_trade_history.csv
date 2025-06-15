@@ -1,0 +1,1 @@
+TicketID,PositionID,Symbol,Type,OpenTimeUTC,EntryPrice,LotSize,SL_Price,TP_Price,CloseTimeUTC,ExitPrice,PNL_AccountCCY,OpenComment,CloseReason,RiskedAmount

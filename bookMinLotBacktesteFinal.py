@@ -17,9 +17,9 @@ ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
 
 # --- Strategy & Backtest Parameters ---
-SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF", 
-                           "AUDJPY",  "USDJPY", 
-                       "USOIL",   
+SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
+                           "AUDJPY",  "XAUUSD",
+                       "USOIL",
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"  ]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
@@ -49,6 +49,7 @@ COMMISSIONS = {
     "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
     "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
     "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
+    "XAUUSD":0.11,
 }
 
 
@@ -128,7 +129,19 @@ def is_within_session(candle_time_utc, symbol_sessions):
         if start_hour <= candle_hour < end_hour: return True
     return False
 
-# ✅ Step 1: Add Fibonacci Utility Function
+# ✅ Step 1: Define the Pullback Measurement Logic
+def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
+    total_leg = abs(impulse_end - impulse_start)
+    if total_leg == 0:
+        return 0
+
+    if trade_type == "BUY":
+        pullback = impulse_end - current_price
+    else:  # SELL
+        pullback = current_price - impulse_end
+
+    return max(0.0, pullback / total_leg)  # returns a % (e.g., 0.32 = 32%)
+
 def calculate_fib_levels(swing_high, swing_low):
     fibs = {
         "0.0": swing_low,
@@ -416,8 +429,8 @@ if __name__ == "__main__":
         current_simulation_date = None
         daily_risk_allocated_on_current_date = 0.0
         max_daily_risk_budget_for_current_date = 0.0
-        
-        consecutive_losses_count = 0 
+
+        consecutive_losses_count = 0
 
         logger.info(f"Global Initial Account Balance: {shared_account_balance:.2f} USD")
         logger.info(f"Backtesting Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
@@ -496,7 +509,7 @@ if __name__ == "__main__":
                         commission_cost = COMMISSIONS.get(trade_symbol, 0.0)
                         global_active_trade['commission'] = commission_cost
                         global_active_trade['pnl_currency'] = raw_pnl - commission_cost
-                        
+
                         shared_account_balance += global_active_trade['pnl_currency']
 
                         if global_active_trade['pnl_currency'] < 0:
@@ -646,12 +659,12 @@ if __name__ == "__main__":
 
                     # Setup confirmed → place order
                     order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
-                    
+
                     # Double-check daily risk budget before placing the order
                     if daily_risk_allocated_on_current_date + setup["risk_amt"] > max_daily_risk_budget_for_current_date + 1e-9:
                         logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Cancelling.")
                         continue # Exceeds risk, so don't place and don't re-queue
-                        
+
                     global_pending_order = {
                         "symbol": setup["symbol"],
                         "type": order_type,
@@ -666,7 +679,7 @@ if __name__ == "__main__":
                     daily_risk_allocated_on_current_date += setup["risk_amt"]
                     logger.info(f"[{setup['symbol']}] {timestamp} Delayed Setup Confirmed. Placing {order_type} pending order. Risk: {setup['risk_amt']:.2f}")
                     logger.debug(f"  Portfolio daily risk allocated: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
-                    
+
                     # Once one setup is promoted to a pending order, stop processing the queue for this tick.
                     # This maintains the "one trade at a time" rule.
                     # Any remaining setups in the old queue will be added to the new queue to be processed on the next tick.
@@ -677,8 +690,8 @@ if __name__ == "__main__":
                 delayed_setups_queue = new_queue
 
                 if consecutive_losses_count >= 5:
-                    continue 
-                
+                    continue
+
                 # Only look for new setups if one was NOT just promoted from the queue
                 if not global_pending_order:
                     for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
@@ -753,14 +766,14 @@ if __name__ == "__main__":
                         except KeyError:
                             logger.warning(f"[{sym_to_check_setup}] {timestamp} Timestamp not found in DataFrame for weakness filter. Skipping setup.")
                             continue
-                        
+
                         current_idx_in_symbol_df_for_lookback = current_idx_for_weakness_filter # Use the same index
 
                         if current_idx_for_weakness_filter < 4:
                             logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough preceding M5 candles for weakness filter ({current_idx_for_weakness_filter} total candles up to current). Skipping setup.")
                             continue
                         recent_candles = symbol_df_for_weakness_filter.iloc[current_idx_for_weakness_filter - 4 : current_idx_for_weakness_filter]
-                        if len(recent_candles) < 4: 
+                        if len(recent_candles) < 4:
                             logger.debug(f"[{sym_to_check_setup}] {timestamp} Sliced less than 4 preceding M5 candles for weakness filter ({len(recent_candles)} found). Skipping setup.")
                             continue
                         bullish_count = (recent_candles['close'] > recent_candles['open']).sum()
@@ -778,30 +791,47 @@ if __name__ == "__main__":
                         if pd.isna(atr_val) or atr_val <= 0:
                             continue
 
-                        # ✅ Step 2: During Setup Evaluation, Identify the Swing
                         # Identify last swing leg (simple: last 10 candles)
                         lookback_window = 10
                         if current_idx_in_symbol_df_for_lookback >= lookback_window:
                             recent_candles = prepared_symbol_data[sym_to_check_setup].iloc[current_idx_in_symbol_df_for_lookback - lookback_window: current_idx_in_symbol_df_for_lookback]
                             swing_high = recent_candles['high'].max()
                             swing_low = recent_candles['low'].min()
-                        
-                            if m5_setup_bias_setup == "BUY":
-                                fib_levels = calculate_fib_levels(swing_high, swing_low)
-                            else:
-                                fib_levels = calculate_fib_levels(swing_low, swing_high)  # reversed for SELL
                         else:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough data for Fib swing.")
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough data for Swing/Pullback analysis.")
                             continue
 
-                        # ✅ Step 3: Check for Confluence with EMA8 or EMA13
+                        # --- NEW PULLBACK FILTER LOGIC START ---
+                        # ✅ Step 2: Identify the Impulse Leg
+                        if m5_setup_bias_setup == "BUY":
+                            impulse_start = swing_low
+                            impulse_end = swing_high
+                            current_price = current_candle_for_setup['low']
+                        else: # SELL
+                            impulse_start = swing_high
+                            impulse_end = swing_low
+                            current_price = current_candle_for_setup['high']
+
+                        # ✅ Step 3: Calculate Pullback Depth and Apply Filter
+                        pullback_depth = calculate_pullback_depth(impulse_start, impulse_end, current_price, m5_setup_bias_setup)
+                        min_required_pullback = 0.30  # 30%
+
+                        if pullback_depth < min_required_pullback:
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Pullback too shallow ({pullback_depth*100:.1f}%). Skipping.")
+                            continue
+                        # --- NEW PULLBACK FILTER LOGIC END ---
+
+                        #Fibonacci Logic - must come AFTER swing is identified
+                        if m5_setup_bias_setup == "BUY":
+                            fib_levels = calculate_fib_levels(swing_high, swing_low)
+                        else:
+                            fib_levels = calculate_fib_levels(swing_low, swing_high)  # reversed for SELL
+
+                        # Check for Confluence with EMA8 or EMA13
                         ema8 = current_candle_for_setup['M5_EMA8']
                         ema13 = current_candle_for_setup['M5_EMA13']
+                        tolerance = 0.5 * atr_val # Define how close is "confluent"
 
-                        # Define how close is considered "confluent"
-                        tolerance = 0.5 * atr_val
-
-                        # Flag if EMA and Fib are close
                         confluent = False
                         for level_key in ['0.382', '0.5', '0.618']:
                             fib_price = fib_levels[level_key]
@@ -816,7 +846,6 @@ if __name__ == "__main__":
                         sl_distance_atr = 1.5 * atr_val
 
                         symbol_df_for_lookback = prepared_symbol_data[sym_to_check_setup]
-                        # current_idx_in_symbol_df_for_lookback already calculated
                         if current_idx_in_symbol_df_for_lookback < 4:
                             continue
 
@@ -850,11 +879,8 @@ if __name__ == "__main__":
                         if estimated_risk_min_lot > max_allowed_risk_per_trade:
                             logger.info(f"[{sym_to_check_setup}] {timestamp} SKIP PENDING: Min lot ({lot_size_fixed_min}) risk ({estimated_risk_min_lot:.2f}) for SL {sl_diff:.{props_setup['digits']}f} exceeds {RISK_PER_TRADE_PERCENT*100:.2f}% of balance ({max_allowed_risk_per_trade:.2f}).")
                             continue
-                        
-                        # Note: Risk is checked against daily budget only when promoting from queue now
-                        
-                        # ✅ Step 2: Modify Setup Detection to Queue, Not Place Order
-                        # Store setup to queue instead of placing immediately
+
+                        # Modify Setup Detection to Queue, Not Place Order
                         delayed_setups_queue.append({
                             "symbol": sym_to_check_setup,
                             "timestamp": timestamp,
@@ -866,7 +892,7 @@ if __name__ == "__main__":
                             "confirm_count": 0  # tracks how many candles passed
                         })
                         logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED for delayed confirmation. Bias: {m5_setup_bias_setup}, Entry: {entry_px:.{props_setup['digits']}f}")
-                        
+
                         # Break after finding and queuing one setup
                         break
 
@@ -918,7 +944,7 @@ if __name__ == "__main__":
             total_counted_trades = sum(rr_distribution.values())
             logger.info(f"  (Analysis based on {total_counted_trades} of {overall_stats['total_trades']} total trades)")
             for bucket, count in rr_distribution.items():
-                if count > 0: 
+                if count > 0:
                     percentage = (count / total_counted_trades) * 100 if total_counted_trades > 0 else 0
                     logger.info(f"  {bucket:<25}: {count:<5} trades ({percentage:.2f}%)")
         else:
