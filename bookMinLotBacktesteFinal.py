@@ -128,6 +128,19 @@ def is_within_session(candle_time_utc, symbol_sessions):
         if start_hour <= candle_hour < end_hour: return True
     return False
 
+# ✅ Step 1: Add Fibonacci Utility Function
+def calculate_fib_levels(swing_high, swing_low):
+    fibs = {
+        "0.0": swing_low,
+        "0.236": swing_low + 0.236 * (swing_high - swing_low),
+        "0.382": swing_low + 0.382 * (swing_high - swing_low),
+        "0.5": swing_low + 0.5 * (swing_high - swing_low),
+        "0.618": swing_low + 0.618 * (swing_high - swing_low),
+        "0.786": swing_low + 0.786 * (swing_high - swing_low),
+        "1.0": swing_high
+    }
+    return fibs
+
 def calculate_lot_size(account_balance_for_risk_calc, risk_percent, sl_price_diff, symbol_props):
     if sl_price_diff <= 0: return 0
     risk_amount_currency = account_balance_for_risk_calc * risk_percent
@@ -451,8 +464,6 @@ if __name__ == "__main__":
             if global_active_trade:
                 trade_symbol = global_active_trade['symbol']
                 props = ALL_SYMBOL_PROPERTIES[trade_symbol]
-                pip_adj_tsl = 2 * props['pip_value_calc']
-
 
                 if trade_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[trade_symbol].index:
                     current_candle_for_active_trade = prepared_symbol_data[trade_symbol].loc[timestamp]
@@ -505,51 +516,51 @@ if __name__ == "__main__":
                         global_active_trade = None
 
                     if global_active_trade and not closed_this_bar:
-                        current_price_for_ts = current_candle_for_active_trade['high'] if global_active_trade['type'] == "BUY" else current_candle_for_active_trade['low']
-                        entry_price_ts = global_active_trade['entry_price']
-                        r_diff_ts = global_active_trade['r_value_price_diff']
-                        ts_levels_ts = global_active_trade['ts_trigger_levels']
-                        current_ts_level_idx = global_active_trade['next_ts_level_idx']
+                        # === New ATR-Based Trailing Stop Logic ===
+                        atr_val = current_candle_for_active_trade.get('ATR', np.nan)
+                        if not (pd.isna(atr_val) or atr_val <= 0):
+                            # Determine current move size from entry
+                            move_from_entry = (
+                                current_candle_for_active_trade['high'] - global_active_trade['entry_price']
+                                if global_active_trade['type'] == "BUY"
+                                else global_active_trade['entry_price'] - current_candle_for_active_trade['low']
+                            )
 
-                        if current_ts_level_idx < len(ts_levels_ts):
-                            r_multiple_target = ts_levels_ts[current_ts_level_idx]
-                            target_price_for_ts_level = 0
-                            if global_active_trade['type'] == "BUY":
-                                target_price_for_ts_level = entry_price_ts + (r_multiple_target * r_diff_ts)
-                            else:
-                                target_price_for_ts_level = entry_price_ts - (r_multiple_target * r_diff_ts)
-                            price_hit_ts_level = False
-                            if global_active_trade['type'] == "BUY" and current_price_for_ts >= target_price_for_ts_level:
-                                price_hit_ts_level = True
-                            elif global_active_trade['type'] == "SELL" and current_price_for_ts <= target_price_for_ts_level:
-                                price_hit_ts_level = True
-                            if price_hit_ts_level:
+                            # How many ATRs has the price moved?
+                            atr_movement = move_from_entry / atr_val
+
+                            # Check if it's time to trail
+                            if atr_movement >= global_active_trade['ts_next_atr_level']:
                                 if not global_active_trade['trailing_active']:
                                     global_active_trade['trailing_active'] = True
-                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED at {global_active_trade['ts_next_atr_level']:.2f} ATR.")
                                 else:
-                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop Update Triggered at {r_multiple_target}R. SL was {global_active_trade['sl']:.{props['digits']}f}")
+                                    logger.info(f"[{trade_symbol}] {timestamp} TSL Update Triggered at {global_active_trade['ts_next_atr_level']:.2f} ATR.")
+
+                                # 🔁 Adjust SL based on recent lows/highs
                                 symbol_df_for_tsl = prepared_symbol_data[trade_symbol]
                                 try:
-                                    current_idx_in_symbol_df_tsl = symbol_df_for_tsl.index.get_loc(timestamp)
-                                    if current_idx_in_symbol_df_tsl >= 2:
-                                        last_3_candles_tsl = symbol_df_for_tsl.iloc[max(0, current_idx_in_symbol_df_tsl - 2) : current_idx_in_symbol_df_tsl + 1]
-                                        new_sl_ts = 0
+                                    current_idx = symbol_df_for_tsl.index.get_loc(timestamp)
+                                    if current_idx >= 2:
+                                        last_3 = symbol_df_for_tsl.iloc[max(0, current_idx - 2): current_idx + 1]
+
+                                        new_sl = 0
                                         if global_active_trade['type'] == "BUY":
-                                            new_sl_ts = last_3_candles_tsl['low'].min() - pip_adj_tsl
-                                            if new_sl_ts > global_active_trade['sl']:
-                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
-                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated BUY: New SL {global_active_trade['sl']:.{props['digits']}f}")
+                                            new_sl = last_3['low'].min() - 2 * props['pip_value_calc']
+                                            if new_sl > global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl, props['digits'])
                                         else:
-                                            new_sl_ts = last_3_candles_tsl['high'].max() + pip_adj_tsl
-                                            if new_sl_ts < global_active_trade['sl']:
-                                                global_active_trade['sl'] = round(new_sl_ts, props['digits'])
-                                                logger.debug(f"  [{trade_symbol}] {timestamp} TSL Updated SELL: New SL {global_active_trade['sl']:.{props['digits']}f}")
-                                    else:
-                                        logger.debug(f"[{trade_symbol}] {timestamp} Not enough preceding candles for TSL adjustment at {r_multiple_target}R.")
+                                            new_sl = last_3['high'].max() + 2 * props['pip_value_calc']
+                                            if new_sl < global_active_trade['sl']:
+                                                global_active_trade['sl'] = round(new_sl, props['digits'])
+
+                                        logger.debug(f"[{trade_symbol}] SL updated to {global_active_trade['sl']:.{props['digits']}f} after {global_active_trade['ts_next_atr_level']:.2f} ATR move.")
+
                                 except KeyError:
-                                    logger.warning(f"Timestamp {timestamp} not found in {trade_symbol} df for TSL, skipping TSL update for level {r_multiple_target}R.")
-                                global_active_trade['next_ts_level_idx'] += 1
+                                    logger.warning(f"{timestamp} not found in {trade_symbol} df for trailing update.")
+
+                                # Increment next trailing level (e.g., 1.5 → 2.0 → 2.5)
+                                global_active_trade['ts_next_atr_level'] += 0.5
 
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
@@ -594,7 +605,9 @@ if __name__ == "__main__":
                                     "initial_sl": sl_price_pending, "tp": tp_price, "r_value_price_diff": risk_val_diff,
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
-                                    "ts_trigger_levels": [1.0, 1.5, 2.0, 2.5, 3.0, 3.5], "next_ts_level_idx": 0,
+                                    # ✅ Step 1: Replace fixed ts_trigger_levels with dynamic ATR tracking
+                                    "ts_trigger_atr_multiple": 1.5,  # start trailing when price moves 1.5×ATR
+                                    "ts_next_atr_level": 1.5,        # track when next trail is due
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
@@ -740,6 +753,8 @@ if __name__ == "__main__":
                         except KeyError:
                             logger.warning(f"[{sym_to_check_setup}] {timestamp} Timestamp not found in DataFrame for weakness filter. Skipping setup.")
                             continue
+                        
+                        current_idx_in_symbol_df_for_lookback = current_idx_for_weakness_filter # Use the same index
 
                         if current_idx_for_weakness_filter < 4:
                             logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough preceding M5 candles for weakness filter ({current_idx_for_weakness_filter} total candles up to current). Skipping setup.")
@@ -763,12 +778,45 @@ if __name__ == "__main__":
                         if pd.isna(atr_val) or atr_val <= 0:
                             continue
 
+                        # ✅ Step 2: During Setup Evaluation, Identify the Swing
+                        # Identify last swing leg (simple: last 10 candles)
+                        lookback_window = 10
+                        if current_idx_in_symbol_df_for_lookback >= lookback_window:
+                            recent_candles = prepared_symbol_data[sym_to_check_setup].iloc[current_idx_in_symbol_df_for_lookback - lookback_window: current_idx_in_symbol_df_for_lookback]
+                            swing_high = recent_candles['high'].max()
+                            swing_low = recent_candles['low'].min()
+                        
+                            if m5_setup_bias_setup == "BUY":
+                                fib_levels = calculate_fib_levels(swing_high, swing_low)
+                            else:
+                                fib_levels = calculate_fib_levels(swing_low, swing_high)  # reversed for SELL
+                        else:
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough data for Fib swing.")
+                            continue
+
+                        # ✅ Step 3: Check for Confluence with EMA8 or EMA13
+                        ema8 = current_candle_for_setup['M5_EMA8']
+                        ema13 = current_candle_for_setup['M5_EMA13']
+
+                        # Define how close is considered "confluent"
+                        tolerance = 0.5 * atr_val
+
+                        # Flag if EMA and Fib are close
+                        confluent = False
+                        for level_key in ['0.382', '0.5', '0.618']:
+                            fib_price = fib_levels[level_key]
+                            if abs(ema8 - fib_price) <= tolerance or abs(ema13 - fib_price) <= tolerance:
+                                confluent = True
+                                break
+
+                        if not confluent:
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} No EMA-Fib confluence. Skipping.")
+                            continue
+
                         sl_distance_atr = 1.5 * atr_val
 
                         symbol_df_for_lookback = prepared_symbol_data[sym_to_check_setup]
-                        try:
-                            current_idx_in_symbol_df_for_lookback = symbol_df_for_lookback.index.get_loc(timestamp)
-                        except KeyError: continue
+                        # current_idx_in_symbol_df_for_lookback already calculated
                         if current_idx_in_symbol_df_for_lookback < 4:
                             continue
 
