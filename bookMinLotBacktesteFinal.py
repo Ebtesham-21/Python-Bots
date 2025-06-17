@@ -25,7 +25,7 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
     "USDCHF": [(7, 14)], "USDCAD": [(12, 14)], "USDJPY": [ (12, 14)],
-    "EURJPY": [ (7, 12)], "GBPJPY": [(7, 14)], "NZDUSD": [ (7, 14)],
+    "EURJPY": [ (0,4) , (7, 12)], "GBPJPY": [ (7, 14)], "NZDUSD": [ (7, 14)],
     "EURCHF": [(7, 14)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 14)],
     "EURNZD": [ (7, 14)], "GBPNZD": [(7, 14)], "XAUUSD": [(7, 14)],
     "XAGUSD": [(7, 14)], "XPTUSD": [(7, 14)], "XAGGBP":[(7, 14)], "XAGEUR":[(7,14)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,14)]

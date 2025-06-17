@@ -10,30 +10,35 @@ import os    # For file operations
 import csv   # For CSV writing
 
 # --- Logger Setup ---
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Global Variables & State ---
+
 SYMBOLS_AVAILABLE_FOR_TRADE = []
 ALL_SYMBOL_PROPERTIES = {}
+
 # --- Bot State (populated at runtime) ---
+
 logged_open_position_ids = set()
 trade_details_for_closure = {}  # Holds details like original SL for management
 delayed_setups_queue = []  # List of setups waiting for confirmation
 session_start_balance = 0.0 # Will be set on initialization
 
 # --- Strategy & Risk Parameters ---
+
 SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF", "GBPJPY", "GBPUSD",
-                    "AUDJPY", "USDJPY", "XAUUSD", "USOIL",
-                    "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"]
+"AUDJPY", "USDJPY", "XAUUSD", "USOIL",
+"BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-    "EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
-    "USDCHF": [(7, 14)], "USDCAD": [(12, 14)], "USDJPY": [ (12, 14)],
-    "EURJPY": [ (7, 12)], "GBPJPY": [(7, 14)], "NZDUSD": [ (7, 14)],
-    "EURCHF": [(7, 14)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 14)],
-    "EURNZD": [ (7, 14)], "GBPNZD": [(7, 14)], "XAUUSD": [(7, 14)],
-    "XAGUSD": [(7, 14)], "XPTUSD": [(7, 14)], "XAGGBP":[(7, 14)], "XAGEUR":[(7,14)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,14)]
+"EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
+"USDCHF": [(7, 14)], "USDCAD": [(12, 14)], "USDJPY": [ (12, 14)],
+"EURJPY": [ (7, 12)], "GBPJPY": [(7, 14)], "NZDUSD": [ (7, 14)],
+"EURCHF": [(7, 14)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 14)],
+"EURNZD": [ (7, 14)], "GBPNZD": [(7, 14)], "XAUUSD": [(7, 14)],
+"XAGUSD": [(7, 14)], "XPTUSD": [(7, 14)], "XAGGBP":[(7, 14)], "XAGEUR":[(7,14)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,14)]
 }
 TRADING_SESSIONS_UTC["USOIL"] = [(12, 14)]
 TRADING_SESSIONS_UTC["UKOIL"] = [(7, 14)]
@@ -45,28 +50,32 @@ RISK_PER_TRADE_PERCENT = 0.01  # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
 
 # --- Commission Structure ---
+
 COMMISSIONS = {
-    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10,
-    "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
-    "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
-    "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
+"EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10,
+"NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
+"UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
+"ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
 }
 
 # --- News Filter Times (User Input) ---
+
 NEWS_TIMES_UTC = {
-    "USDCHF": [], "USDCAD": [], "NZDUSD": [],
-    "ETHUSD": [], "BTCUSD": [], "EURUSD": [],
-    "AUDUSD": [], "GBPUSD": [], "USDJPY": [],
-    "USOIL": []
+"USDCHF": [], "USDCAD": [], "NZDUSD": [],
+"ETHUSD": [], "BTCUSD": [], "EURUSD": [],
+"AUDUSD": [], "GBPUSD": [], "USDJPY": [],
+"USOIL": []
 }
 
 # --- CSV File Recording Configuration ---
+
 TRADE_HISTORY_FILE = "bookStrategy_trade_history.csv"
 CSV_HEADERS = ["TicketID", "PositionID", "Symbol", "Type", "OpenTimeUTC", "EntryPrice",
-               "LotSize", "SL_Price", "TP_Price", "CloseTimeUTC", "ExitPrice",
-               "PNL_AccountCCY", "OpenComment", "CloseReason", "RiskedAmount"]
+"LotSize", "SL_Price", "TP_Price", "CloseTimeUTC", "ExitPrice",
+"PNL_AccountCCY", "OpenComment", "CloseReason", "RiskedAmount"]
 
 # --- CSV Helper Functions ---
+
 def initialize_trade_history_file():
     if not os.path.exists(TRADE_HISTORY_FILE):
         try:
@@ -87,7 +96,10 @@ def load_state_from_csv():
 
     try:
         df = pd.read_csv(TRADE_HISTORY_FILE, dtype={'PositionID': str})
-        df = df[~df['TicketID'].astype(str).str.contains("--- Performance Summary ---|Metric", na=False)]
+        
+        # --- FIX: Filter for rows where PositionID is a valid number string ---
+        # This robustly removes summary lines and other non-trade data which caused the error.
+        df = df[df['PositionID'].str.isdigit().fillna(False)]
         
         open_trades_df = df[df['CloseTimeUTC'].isnull() | (df['CloseTimeUTC'] == '')]
         for _, row in open_trades_df.iterrows():
@@ -103,6 +115,7 @@ def load_state_from_csv():
         logger.info(f"{TRADE_HISTORY_FILE} is empty. Starting with empty state.")
     except Exception as e:
         logger.error(f"Error loading state from CSV {TRADE_HISTORY_FILE}: {e}")
+
 
 def append_trade_to_csv(trade_data_dict):
     try:
@@ -125,13 +138,16 @@ def update_closed_trade_in_csv(position_id_to_update, update_values_dict):
             lines.append(header)
             for row in reader:
                 if row and len(row) == len(CSV_HEADERS):
+                    # Find the correct row: matching PositionID and not yet closed
                     if row[CSV_HEADERS.index('PositionID')] == position_id_to_update_str and \
                        (not row[CSV_HEADERS.index('CloseTimeUTC')] or row[CSV_HEADERS.index('CloseTimeUTC')] == ''):
+                        # Update the values in the row
                         for key, value in update_values_dict.items():
                             if key in CSV_HEADERS:
                                 row[CSV_HEADERS.index(key)] = value
                         updated = True
-                lines.append(row)
+                lines.append(row) # Append every row, modified or not
+
         if updated:
             with open(TRADE_HISTORY_FILE, 'w', newline='') as f_write:
                 writer = csv.writer(f_write)
@@ -141,7 +157,7 @@ def update_closed_trade_in_csv(position_id_to_update, update_values_dict):
             logger.warning(f"Could not find open trade with PositionID {position_id_to_update_str} in {TRADE_HISTORY_FILE} to update.")
     except Exception as e:
         logger.error(f"Error updating CSV for position {position_id_to_update_str}: {e}")
-        
+
 def calculate_and_append_performance_summary(csv_filepath, session_initial_balance):
     logger.info(f"Calculating performance summary for trades in {csv_filepath} using session initial balance: {session_initial_balance:.2f}")
     if not os.path.exists(csv_filepath):
@@ -149,12 +165,18 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
         return
     try:
         df_all = pd.read_csv(csv_filepath, dtype={'PositionID': str, 'PNL_AccountCCY': str})
-        df_trades_only = df_all[~df_all[CSV_HEADERS[0]].astype(str).str.contains("--- Performance Summary ---|Metric", na=False)].copy()
-        if df_trades_only.empty: return
+        
+        # Filter out any non-trade rows (e.g., previous summaries)
+        df_trades_only = df_all[df_all['PositionID'].str.isdigit().fillna(False)].copy()
+        if df_trades_only.empty:
+            logger.info("No trades found in history file to summarize.")
+            return
 
         df_trades_only['PNL_AccountCCY'] = pd.to_numeric(df_trades_only['PNL_AccountCCY'], errors='coerce')
         df_closed = df_trades_only[df_trades_only['PNL_AccountCCY'].notna()].copy()
-        if df_closed.empty: return
+        if df_closed.empty:
+            logger.info("No closed trades found to summarize.")
+            return
 
         df_closed['CloseTimeUTC_dt'] = pd.to_datetime(df_closed['CloseTimeUTC'], errors='coerce', utc=True)
         df_closed = df_closed.sort_values(by='CloseTimeUTC_dt').reset_index(drop=True)
@@ -186,15 +208,15 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
     except Exception as e:
         logger.error(f"Error calculating or appending performance summary: {e}", exc_info=True)
 
-
 # --- MT5 Initialization and Shutdown ---
+
 def initialize_mt5_interface(symbols_to_check):
     global SYMBOLS_AVAILABLE_FOR_TRADE, ALL_SYMBOL_PROPERTIES, session_start_balance
     if not mt5.initialize():
         logger.error(f"MT5 initialize() failed, error code = {mt5.last_error()}")
         return False
     logger.info("MetaTrader 5 Initialized")
-    
+
     account_info = mt5.account_info()
     if account_info is None:
         logger.error(f"Failed to get account info, error code = {mt5.last_error()}")
@@ -247,8 +269,9 @@ def initialize_mt5_interface(symbols_to_check):
 def shutdown_mt5_interface():
     mt5.shutdown()
     logger.info("MetaTrader 5 Shutdown")
-    
+
 # --- Live Bot Helper Functions ---
+
 def is_within_session(symbol_sessions):
     if not symbol_sessions: return True
     candle_hour = datetime.now(timezone.utc).hour
@@ -303,7 +326,7 @@ def fetch_latest_data(symbol):
     df_h4['H4_EMA8'] = ta.ema(df_h4['close'], length=8)
     df_h4['H4_EMA21'] = ta.ema(df_h4['close'], length=21)
     df_h4['RSI_H4'] = ta.rsi(df_h4['close'], length=14)
-    
+
     # H1 Indicators
     df_h1['H1_EMA8'] = ta.ema(df_h1['close'], length=8)
     df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21)
@@ -322,13 +345,14 @@ def fetch_latest_data(symbol):
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=1))
     combined_df = pd.merge_asof(combined_df.sort_index(), df_h4[['H4_EMA8', 'H4_EMA21', 'RSI_H4']].sort_index(),
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=4))
-    
+
     combined_df.dropna(inplace=True)
     if combined_df.empty: return None
-    
+
     return combined_df, combined_df.iloc[-1] # Return full df for lookbacks and last row for signals
 
 # --- Strategy Logic (Unchanged) ---
+
 def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
     total_leg = abs(impulse_end - impulse_start)
     if total_leg == 0: return 0
@@ -343,9 +367,10 @@ def calculate_fib_levels(swing_high, swing_low):
     }
 
 # --- Live Trading Actions ---
+
 def place_pending_order(symbol, props, order_type, entry_price, sl_price, lot_size, comment):
     trade_type = mt5.ORDER_TYPE_BUY_STOP if order_type == "BUY_STOP" else mt5.ORDER_TYPE_SELL_STOP
-    
+
     request = {
         "action": mt5.TRADE_ACTION_PENDING,
         "symbol": symbol,
@@ -387,7 +412,7 @@ def modify_position_sltp(position, new_sl, new_tp):
     else:
         logger.error(f"[{position.symbol}] Position {position.ticket} MODIFY FAILED. Retcode: {result.retcode if result else 'N/A'}, Error: {mt5.last_error()}")
         return False
-        
+
 def cancel_pending_order(order_ticket):
     request = {
         "action": mt5.TRADE_ACTION_REMOVE,
@@ -403,6 +428,7 @@ def cancel_pending_order(order_ticket):
         return False
 
 # --- Main Management Routines ---
+
 def manage_closed_positions():
     live_position_ids = {str(p.ticket) for p in mt5.positions_get() if p.magic == 202405}
     closed_position_ids = logged_open_position_ids - live_position_ids
@@ -436,7 +462,7 @@ def manage_closed_positions():
         logged_open_position_ids.remove(pos_id)
         if pos_id in trade_details_for_closure:
             del trade_details_for_closure[pos_id]
-            
+
 def manage_open_positions():
     open_positions = mt5.positions_get()
     if not open_positions: return
@@ -530,7 +556,7 @@ def manage_pending_orders():
 
 def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
-    
+
     # Process the queue first
     new_queue = []
     order_placed_this_cycle = False
@@ -658,10 +684,11 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         })
         logger.info(f"[{symbol}] SETUP QUEUED for delayed confirmation. Bias: {h1_trend_bias}, Entry: {entry_px}")
         break # One setup queued per cycle
-    
+
     return daily_risk_allocated
 
 # --- Main Execution ---
+
 if __name__ == "__main__":
     if not initialize_mt5_interface(SYMBOLS_TO_TRADE):
         logger.error("Failed to initialize. Exiting.")
@@ -678,7 +705,7 @@ if __name__ == "__main__":
 
     logger.info("--- Live Trading Bot Started ---")
     logger.info(f"Initial daily risk budget: {max_daily_risk_budget:.2f} USD")
-    
+
     try:
         while True:
             # Daily Reset Logic
@@ -712,7 +739,7 @@ if __name__ == "__main__":
                 else:
                     logger.warning("Consecutive loss limit hit. No new trades will be sought today.")
             else:
-                logger.debug(f"Trade management cycle. Open: {len(open_positions)}, Pending: {len(pending_orders)}")
+                logger.debug(f"Trade management cycle. Open: {len(open_positions) if open_positions else 0}, Pending: {len(pending_orders) if pending_orders else 0}")
 
             logger.info("Cycle complete. Waiting for 60 seconds...")
             time.sleep(60)
