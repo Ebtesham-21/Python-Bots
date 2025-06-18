@@ -8,11 +8,46 @@ import logging
 import math
 import os    # For file operations
 import csv   # For CSV writing
+import requests # For Telegram notifications
+
+# --- Telegram Configuration ---
+
+TELEGRAM_BOT_TOKEN = '7581880079:AAFEFvYhqopgdLaD_IDIeJOnv7f5oYxnu4g'
+TELEGRAM_CHAT_ID = '5460163975'
+
+class TelegramLogHandler(logging.Handler):
+    def emit(self, record):
+        log_entry = self.format(record)
+        try:
+            # Use a timeout to prevent the bot from hanging if Telegram is unresponsive
+            requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                data={"chat_id": TELEGRAM_CHAT_ID, "text": log_entry},
+                timeout=5
+            )
+        except Exception as e:
+            # Use print here to avoid a potential logging loop if Telegram fails
+            print(f"CRITICAL: Failed to send log to Telegram. Error: {e}")
 
 # --- Logger Setup ---
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Get a specific logger instance
+logger = logging.getLogger("TradeBotLogger")
+logger.setLevel(logging.INFO)
+
+# Prevent log messages from being propagated to the root logger
+logger.propagate = False
+
+# Console handler for terminal output
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(console_handler)
+
+# Telegram handler for remote notifications
+telegram_handler = TelegramLogHandler()
+telegram_handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s')) # Specific format for Telegram
+logger.addHandler(telegram_handler)
+
 
 # --- Global Variables & State ---
 
@@ -29,7 +64,7 @@ session_start_balance = 0.0 # Will be set on initialization
 # --- Strategy & Risk Parameters ---
 
 SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF", "GBPJPY", "GBPUSD",
-"AUDJPY", "USDJPY", "XAUUSD", "USOIL",
+"AUDJPY",  "XAUUSD", "USOIL",
 "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
@@ -61,10 +96,10 @@ COMMISSIONS = {
 # --- News Filter Times (User Input) ---
 
 NEWS_TIMES_UTC = {
-"USDCHF": [], "USDCAD": [], "NZDUSD": [],
-"ETHUSD": [], "BTCUSD": [], "EURUSD": [],
-"AUDUSD": [], "GBPUSD": [], "USDJPY": [],
-"USOIL": []
+"USDCHF": ["12:30"], "USDCAD": ["12:30"], "NZDUSD": ["12:30"],
+"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"],
+"AUDUSD": ["12:30"], "GBPUSD": ["6:00"], "USDJPY": ["12:30"],
+"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":["6:00"],
 }
 
 # --- CSV File Recording Configuration ---
@@ -165,7 +200,7 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
         return
     try:
         df_all = pd.read_csv(csv_filepath, dtype={'PositionID': str, 'PNL_AccountCCY': str})
-        
+
         # Filter out any non-trade rows (e.g., previous summaries)
         df_trades_only = df_all[df_all['PositionID'].str.isdigit().fillna(False)].copy()
         if df_trades_only.empty:
@@ -392,7 +427,7 @@ def place_pending_order(symbol, props, order_type, entry_price, sl_price, lot_si
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         logger.error(f"[{symbol}] Order Send FAILED. Retcode: {result.retcode}, Comment: {result.comment}")
         return None
-        
+    
     logger.info(f"[{symbol}] PENDING ORDER PLACED. Ticket: {result.order}, Type: {order_type}, Price: {entry_price}, Lot: {lot_size}")
     return result.order
 
@@ -732,6 +767,7 @@ if __name__ == "__main__":
             if not open_positions and not pending_orders:
                 if consecutive_losses_count < 5:
                     if daily_risk_allocated_today < max_daily_risk_budget:
+                        # Use a lower-level log for frequent checks to avoid spamming Telegram
                         logger.debug("No active/pending trades. Scanning for new setups...")
                         daily_risk_allocated_today = check_for_new_signals(daily_risk_allocated_today, max_daily_risk_budget)
                     else:
@@ -741,7 +777,8 @@ if __name__ == "__main__":
             else:
                 logger.debug(f"Trade management cycle. Open: {len(open_positions) if open_positions else 0}, Pending: {len(pending_orders) if pending_orders else 0}")
 
-            logger.info("Cycle complete. Waiting for 60 seconds...")
+            # Use a print statement for the loop confirmation to avoid logging it to Telegram
+            print(f"Cycle complete at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}. Waiting for 60 seconds...")
             time.sleep(60)
 
     except KeyboardInterrupt:

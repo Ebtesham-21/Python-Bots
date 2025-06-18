@@ -19,8 +19,11 @@ RUN_BACKTEST = True # Important for the provided MT5 init function
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",  "XAUUSD",
-                       "USOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"  ]
+                       "USOIL", 
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",   ]
+
+
+# "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade 
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
