@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 import logging
 import math
+import matplotlib.pyplot as plt # Added for plotting
 
 # --- Logger Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,11 +20,13 @@ RUN_BACKTEST = True # Important for the provided MT5 init function
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",  "XAUUSD",
-                       "USOIL", 
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",   ]
+                       "USOIL",
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",
+
+                             ]
 
 
-# "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade 
+# "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
@@ -409,8 +412,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1)
-    end_datetime = datetime(2025, 5, 31)
+    start_datetime = datetime(2025, 2, 1)
+    end_datetime = datetime(2025, 2, 28)
 
     buffer_days = 15
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
@@ -422,6 +425,7 @@ if __name__ == "__main__":
         global_active_trade = None
         global_pending_order = None
         all_closed_trades_portfolio = []
+        equity_curve_over_time = [] # To track equity for plotting
 
         # ✅ Step 1: Add a New Variable to Hold "Delayed Setups"
         delayed_setups_queue = []  # List of setups waiting for confirmation
@@ -514,6 +518,7 @@ if __name__ == "__main__":
                         global_active_trade['pnl_currency'] = raw_pnl - commission_cost
 
                         shared_account_balance += global_active_trade['pnl_currency']
+                        equity_curve_over_time.append((timestamp, shared_account_balance)) # Record equity point
 
                         if global_active_trade['pnl_currency'] < 0:
                             consecutive_losses_count += 1
@@ -956,3 +961,22 @@ if __name__ == "__main__":
             logger.info(f"Overall Ending Balance: {shared_account_balance:.2f} USD")
 
         shutdown_mt5_interface()
+
+        # Create a DataFrame from recorded equity points
+        if equity_curve_over_time:
+            eq_df = pd.DataFrame(equity_curve_over_time, columns=["timestamp", "equity"])
+            eq_df.set_index("timestamp", inplace=True)
+
+            # Plot equity curve
+            plt.figure(figsize=(12, 6))
+            plt.plot(eq_df.index, eq_df["equity"], label="Equity Curve", color="blue")
+            plt.title("Equity Curve Over Time")
+            plt.xlabel("Time")
+            plt.ylabel("Equity (USD)")
+            plt.grid(True)
+            plt.legend()
+            plt.tight_layout()
+            # plt.savefig("equity_curve.png") # Uncomment to save the plot to a file
+            plt.show()
+        else:
+            logger.warning("No equity data to plot.")

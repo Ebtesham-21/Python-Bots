@@ -61,10 +61,10 @@ COMMISSIONS = {
 # --- News Filter Times (User Input) ---
 
 NEWS_TIMES_UTC = {
-"USDCHF": ["12:30"], "USDCAD": ["12:30"], "NZDUSD": ["12:30"],
-"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"],
-"AUDUSD": ["12:30"], "GBPUSD": ["6:00"], "USDJPY": ["12:30"],
-"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":["6:00"],
+"USDCHF": [],  "USDCAD": [], "NZDUSD": [],
+"ETHUSD": [], "BTCUSD": [], "EURUSD": [],
+"AUDJPY": ["6:40"], "GBPUSD": ["6:00"], "USDJPY": [],
+"USOIL": [], "XAUUSD":[], "GBPJPY":["6:00","6:40"], "BTCJPY":["6:40"]
 }
 
 # --- CSV File Recording Configuration ---
