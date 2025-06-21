@@ -70,3 +70,23 @@ Losing Trades,13
 Total PNL (Account CCY),-6.89
 Max Drawdown (USD),9.17
 Max Drawdown (%),4.66%
+1576098854,1576098854,BTCJPY,SELL,2025-06-21T01:08:28+00:00,15064086.0,0.01,15084721.0,14981546.0,2025-06-21T01:26:57+00:00,15084721.0,-1.62,LiveBot_v1_Delay,Closed by broker: [sl 15084721.00000],1.41
+1576149713,1576149713,BTCJPY,SELL,2025-06-21T05:45:49+00:00,15095769.0,0.01,15106999.0,15050849.0,2025-06-21T06:23:03+00:00,15098068.0,-0.37,LiveBot_v1_Delay,Closed by broker: [sl 15098068.00000],0.77
+
+--- Performance Summary ---,Generated: 2025-06-21T06:30:53.462098+00:00 ---
+Metric,Value
+Total Closed Trades,19
+Winning Trades,4
+Losing Trades,15
+Total PNL (Account CCY),-8.88
+Max Drawdown (USD),11.16
+Max Drawdown (%),5.79%
+
+--- Performance Summary ---,Generated: 2025-06-21T06:56:59.987676+00:00 ---
+Metric,Value
+Total Closed Trades,19
+Winning Trades,4
+Losing Trades,15
+Total PNL (Account CCY),-8.88
+Max Drawdown (USD),11.16
+Max Drawdown (%),5.84%
