@@ -58,6 +58,10 @@ INITIAL_ACCOUNT_BALANCE = 200.00
 RISK_PER_TRADE_PERCENT = 0.01 # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
 
+# --- NEW: Simulation Parameters ---
+SPREAD_PIPS = 1.5  # Simulate a 1.5 pip spread
+SLIPPAGE_PIPS = 0.5 # Simulate 0.5 pips of slippage on entry
+
 # --- NEW: Commission Structure ---
 # This dictionary holds the commission cost per trade for the minimum lot size.
 # The bot currently only trades the minimum lot, so this value is applied directly.
@@ -406,20 +410,20 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_h4_resampled_rsi = pd.DataFrame(columns=['RSI_H4'])
         df_h4_resampled_rsi['RSI_H4'] = np.nan
 
-    # --- M1 Data --- (✅ MODIFIED from M5 to M1)
-    df_m1 = get_historical_data(symbol, mt5.TIMEFRAME_M1, start_date, end_date)
-    if df_m1.empty: return pd.DataFrame()
-    df_m1['M1_EMA8'] = ta.ema(df_m1['close'], length=8)
-    df_m1['M1_EMA13'] = ta.ema(df_m1['close'], length=13)
-    df_m1['M1_EMA21'] = ta.ema(df_m1['close'], length=21)
-    if len(df_m1) >= 14:
-        df_m1['ATR'] = ta.atr(df_m1['high'], df_m1['low'], df_m1['close'], length=14)
+    # --- M5 Data --- (MODIFIED from M1 to M5)
+    df_m5 = get_historical_data(symbol, mt5.TIMEFRAME_M5, start_date, end_date)
+    if df_m5.empty: return pd.DataFrame()
+    df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
+    df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13)
+    df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
+    if len(df_m5) >= 14:
+        df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     else:
-        df_m1['ATR'] = np.nan
-    df_m1['RSI_M1'] = ta.rsi(df_m1['close'], length=14) # 🧮 For M1 RSI (User Step 1)
+        df_m5['ATR'] = np.nan
+    df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14) # For M5 RSI
 
-    # Initial merge for M1 data + H1 EMAs/Close (✅ MODIFIED from df_m5 to df_m1)
-    combined_df = pd.merge_asof(df_m1.sort_index(), df_h1_resampled_emas.sort_index(),
+    # Initial merge for M5 data + H1 EMAs/Close
+    combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled_emas.sort_index(),
                                 left_index=True, right_index=True,
                                 direction='backward', tolerance=pd.Timedelta(hours=1))
 
@@ -484,6 +488,7 @@ if __name__ == "__main__":
         logger.info(f"Global Initial Account Balance: {shared_account_balance:.2f} USD")
         logger.info(f"Backtesting Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
         logger.info(f"Risk per trade: {RISK_PER_TRADE_PERCENT*100:.2f}%, Daily Risk Limit: {DAILY_RISK_LIMIT_PERCENT*100:.2f}%")
+        logger.info(f"--- SIMULATION: Spread = {SPREAD_PIPS} pips, Slippage = {SLIPPAGE_PIPS} pips ---")
         logger.info("One trade at a time across the entire portfolio.")
         logger.info("Lot size will be fixed to minimum volume. Risk guard active for min lot.")
         logger.info("--- NEW: Trading will halt for the day after 5 consecutive losses.")
@@ -511,7 +516,7 @@ if __name__ == "__main__":
             exit()
 
         master_time_index = sorted(list(master_time_index_set))
-        logger.info(f"Master time index created with {len(master_time_index)} M1 candles to process.") # ✅ MODIFIED Log Message
+        logger.info(f"Master time index created with {len(master_time_index)} M5 candles to process.")
 
         for timestamp in master_time_index:
             candle_date = timestamp.date()
@@ -528,23 +533,35 @@ if __name__ == "__main__":
                 props = ALL_SYMBOL_PROPERTIES[trade_symbol]
 
                 if trade_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[trade_symbol].index:
-                    current_candle_for_active_trade = prepared_symbol_data[trade_symbol].loc[timestamp]
-                    closed_this_bar = False
+                    current_candle = prepared_symbol_data[trade_symbol].loc[timestamp]
+                    
                     exit_price = 0
+                    
+                    # ===== SPREAD SIMULATION FOR EXITS =====
+                    spread_price = SPREAD_PIPS * props['pip_value_calc']
 
-                    if global_active_trade['type'] == "BUY" and current_candle_for_active_trade['low'] <= global_active_trade['sl']:
-                        exit_price = global_active_trade['sl']; global_active_trade['status'] = "SL_HIT"
-                    elif global_active_trade['type'] == "SELL" and current_candle_for_active_trade['high'] >= global_active_trade['sl']:
-                        exit_price = global_active_trade['sl']; global_active_trade['status'] = "SL_HIT"
+                    if global_active_trade['type'] == "BUY":
+                        # TP is hit by the BID price, which is chart price - spread (per user logic)
+                        if (current_candle['high'] - spread_price) >= global_active_trade['tp']:
+                            exit_price = global_active_trade['tp']
+                            global_active_trade['status'] = "TP_HIT"
+                        # SL is hit by the BID price (per user logic)
+                        elif (current_candle['low'] - spread_price) <= global_active_trade['sl']:
+                            exit_price = global_active_trade['sl']
+                            global_active_trade['status'] = "SL_HIT"
 
-                    if global_active_trade['status'] == "OPEN":
-                        if global_active_trade['type'] == "BUY" and current_candle_for_active_trade['high'] >= global_active_trade['tp']:
-                            exit_price = global_active_trade['tp']; global_active_trade['status'] = "TP_HIT"
-                        elif global_active_trade['type'] == "SELL" and current_candle_for_active_trade['low'] <= global_active_trade['tp']:
-                            exit_price = global_active_trade['tp']; global_active_trade['status'] = "TP_HIT"
+                    elif global_active_trade['type'] == "SELL":
+                        # TP is hit by the ASK price, which is chart price + spread (per user logic)
+                        if (current_candle['low'] + spread_price) <= global_active_trade['tp']:
+                            exit_price = global_active_trade['tp']
+                            global_active_trade['status'] = "TP_HIT"
+                        # SL is hit by the ASK price (per user logic)
+                        elif (current_candle['high'] + spread_price) >= global_active_trade['sl']:
+                            exit_price = global_active_trade['sl']
+                            global_active_trade['status'] = "SL_HIT"
+                    # ===== END SPREAD SIMULATION =====
 
                     if global_active_trade['status'] != "OPEN":
-                        closed_this_bar = True
                         global_active_trade['exit_time'] = timestamp
                         global_active_trade['exit_price'] = exit_price
                         price_diff = (exit_price - global_active_trade['entry_price']) if global_active_trade['type'] == "BUY" else (global_active_trade['entry_price'] - exit_price)
@@ -560,41 +577,35 @@ if __name__ == "__main__":
                         global_active_trade['pnl_currency'] = raw_pnl - commission_cost
 
                         shared_account_balance += global_active_trade['pnl_currency']
-                        equity_curve_over_time.append((timestamp, shared_account_balance)) # Record equity point
+                        equity_curve_over_time.append((timestamp, shared_account_balance))
 
                         if global_active_trade['pnl_currency'] < 0:
                             consecutive_losses_count += 1
-                            logger.info(f"Loss recorded. Consecutive losses now: {consecutive_losses_count}.")
                             if consecutive_losses_count >= 5:
-                                logger.warning(f"STOP LOSS LIMIT HIT: {consecutive_losses_count} consecutive losses. No new trades will be initiated for the rest of the day: {current_simulation_date}.")
-                        else: # Win or Break-even
+                                logger.warning(f"STOP LOSS LIMIT HIT: {consecutive_losses_count} consecutive losses...")
+                        else:
                             if consecutive_losses_count > 0:
                                 logger.info(f"Winning/BE trade recorded. Resetting consecutive loss counter from {consecutive_losses_count} to 0.")
                             consecutive_losses_count = 0
 
                         global_active_trade['balance_after_trade'] = shared_account_balance
-                        logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): Raw P&L: {raw_pnl:.2f}, Comm: {commission_cost:.2f}, Net P&L: {global_active_trade['pnl_currency']:.2f}, New Portfolio Bal: {shared_account_balance:.2f}")
+                        logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): Net P&L: {global_active_trade['pnl_currency']:.2f}, New Bal: {shared_account_balance:.2f}")
                         all_closed_trades_portfolio.append(global_active_trade.copy())
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
-                        # ✅ Step 5: 🔁 Call This After Each Trade Closes
                         log_backtest_trade_to_csv(global_active_trade)
                         global_active_trade = None
-
-                    if global_active_trade and not closed_this_bar:
-                        # === New ATR-Based Trailing Stop Logic ===
-                        atr_val = current_candle_for_active_trade.get('ATR', np.nan)
+                    
+                    elif global_active_trade:
+                        atr_val = current_candle.get('ATR', np.nan)
                         if not (pd.isna(atr_val) or atr_val <= 0):
-                            # Determine current move size from entry
                             move_from_entry = (
-                                current_candle_for_active_trade['high'] - global_active_trade['entry_price']
+                                current_candle['high'] - global_active_trade['entry_price']
                                 if global_active_trade['type'] == "BUY"
-                                else global_active_trade['entry_price'] - current_candle_for_active_trade['low']
+                                else global_active_trade['entry_price'] - current_candle['low']
                             )
 
-                            # How many ATRs has the price moved?
                             atr_movement = move_from_entry / atr_val
 
-                            # Check if it's time to trail
                             if atr_movement >= global_active_trade['ts_next_atr_level']:
                                 if not global_active_trade['trailing_active']:
                                     global_active_trade['trailing_active'] = True
@@ -602,31 +613,29 @@ if __name__ == "__main__":
                                 else:
                                     logger.info(f"[{trade_symbol}] {timestamp} TSL Update Triggered at {global_active_trade['ts_next_atr_level']:.2f} ATR.")
 
-                                # 🔁 Adjust SL based on recent lows/highs
                                 symbol_df_for_tsl = prepared_symbol_data[trade_symbol]
                                 try:
                                     current_idx = symbol_df_for_tsl.index.get_loc(timestamp)
-                                    if current_idx >= 2:
-                                        last_3 = symbol_df_for_tsl.iloc[max(0, current_idx - 2): current_idx + 1]
+                                    if current_idx >= 3:
+                                        last_3 = symbol_df_for_tsl.iloc[max(0, current_idx - 3): current_idx]
+                                        if not last_3.empty:
+                                            new_sl = 0
+                                            if global_active_trade['type'] == "BUY":
+                                                new_sl = last_3['low'].min() - 2 * props['pip_value_calc']
+                                                if new_sl > global_active_trade['sl']:
+                                                    global_active_trade['sl'] = round(new_sl, props['digits'])
+                                            else:
+                                                new_sl = last_3['high'].max() + 2 * props['pip_value_calc']
+                                                if new_sl < global_active_trade['sl']:
+                                                    global_active_trade['sl'] = round(new_sl, props['digits'])
 
-                                        new_sl = 0
-                                        if global_active_trade['type'] == "BUY":
-                                            new_sl = last_3['low'].min() - 2 * props['pip_value_calc']
-                                            if new_sl > global_active_trade['sl']:
-                                                global_active_trade['sl'] = round(new_sl, props['digits'])
-                                        else:
-                                            new_sl = last_3['high'].max() + 2 * props['pip_value_calc']
-                                            if new_sl < global_active_trade['sl']:
-                                                global_active_trade['sl'] = round(new_sl, props['digits'])
-
-                                        logger.debug(f"[{trade_symbol}] SL updated to {global_active_trade['sl']:.{props['digits']}f} after {global_active_trade['ts_next_atr_level']:.2f} ATR move.")
+                                            logger.debug(f"[{trade_symbol}] SL updated to {global_active_trade['sl']:.{props['digits']}f} after {global_active_trade['ts_next_atr_level']:.2f} ATR move.")
 
                                 except KeyError:
                                     logger.warning(f"{timestamp} not found in {trade_symbol} df for trailing update.")
 
-                                # Increment next trailing level (e.g., 1.5 → 2.0 → 2.5)
                                 global_active_trade['ts_next_atr_level'] += 0.5
-
+            
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
                 props = ALL_SYMBOL_PROPERTIES[order_symbol]
@@ -636,15 +645,14 @@ if __name__ == "__main__":
                     sl_price_pending = global_pending_order['sl_price']
                     order_type_pending = global_pending_order['type']
                     lot_size_pending = global_pending_order['lot_size']
-                    # ✅ MODIFIED from M5_EMA21 to M1_EMA21
-                    m1_ema21_for_invalidation = current_candle_for_pending_order['M1_EMA21']
+                    m5_ema21_for_invalidation = current_candle_for_pending_order['M5_EMA21']
                     setup_invalidated = False
-                    if global_pending_order['setup_bias'] == "BUY" and current_candle_for_pending_order['close'] < m1_ema21_for_invalidation:
+                    if global_pending_order['setup_bias'] == "BUY" and current_candle_for_pending_order['close'] < m5_ema21_for_invalidation:
                         setup_invalidated = True
-                        logger.info(f"[{order_symbol}] {timestamp} PENDING BUY order invalidated (Close < M1_EMA21 before trigger).")
-                    elif global_pending_order['setup_bias'] == "SELL" and current_candle_for_pending_order['close'] > m1_ema21_for_invalidation:
+                        logger.info(f"[{order_symbol}] {timestamp} PENDING BUY order invalidated (Close < M5_EMA21 before trigger).")
+                    elif global_pending_order['setup_bias'] == "SELL" and current_candle_for_pending_order['close'] > m5_ema21_for_invalidation:
                         setup_invalidated = True
-                        logger.info(f"[{order_symbol}] {timestamp} PENDING SELL order invalidated (Close > M1_EMA21 before trigger).")
+                        logger.info(f"[{order_symbol}] {timestamp} PENDING SELL order invalidated (Close > M5_EMA21 before trigger).")
                     if setup_invalidated:
                         daily_risk_allocated_on_current_date -= global_pending_order['intended_risk_amount']
                         logger.debug(f"[{order_symbol}] Risk {global_pending_order['intended_risk_amount']:.2f} refunded due to pending order invalidation. Daily allocated: {daily_risk_allocated_on_current_date:.2f}")
@@ -652,11 +660,21 @@ if __name__ == "__main__":
                     else:
                         triggered = False; actual_entry_price = 0
                         if order_type_pending == "BUY_STOP" and current_candle_for_pending_order['high'] >= entry_price_pending:
-                            actual_entry_price = entry_price_pending; triggered = True
+                            triggered = True
                         elif order_type_pending == "SELL_STOP" and current_candle_for_pending_order['low'] <= entry_price_pending:
-                            actual_entry_price = entry_price_pending; triggered = True
+                            triggered = True
+                        
                         if triggered:
-                            logger.info(f"[{order_symbol}] {timestamp} PENDING {order_type_pending} TRIGGERED @{actual_entry_price:.{props['digits']}f} Lot:{lot_size_pending}")
+                            # --- ADD SLIPPAGE SIMULATION ---
+                            slippage_price_adj = SLIPPAGE_PIPS * props['pip_value_calc']
+                            if order_type_pending == "BUY_STOP":
+                                actual_entry_price = entry_price_pending + slippage_price_adj
+                            else: # SELL_STOP
+                                actual_entry_price = entry_price_pending - slippage_price_adj
+                            # --- END SIMULATION ---
+                            
+                            logger.info(f"[{order_symbol}] {timestamp} PENDING {order_type_pending} TRIGGERED. Original Entry: {entry_price_pending:.{props['digits']}f}, Actual (w/ slippage): {actual_entry_price:.{props['digits']}f} Lot:{lot_size_pending}")
+
                             risk_val_diff = abs(actual_entry_price - sl_price_pending)
                             if risk_val_diff <= 0 or lot_size_pending <= 0:
                                 logger.warning(f"[{order_symbol}] Invalid risk (diff {risk_val_diff}) /lot ({lot_size_pending}) on trigger. Cancelling order and refunding risk.")
@@ -671,304 +689,172 @@ if __name__ == "__main__":
                                     "initial_sl": sl_price_pending, "tp": tp_price, "r_value_price_diff": risk_val_diff,
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
-                                    # ✅ Step 1: Replace fixed ts_trigger_levels with dynamic ATR tracking
-                                    "ts_trigger_atr_multiple": 1.5,  # start trailing when price moves 1.5×ATR
-                                    "ts_next_atr_level": 1.5,        # track when next trail is due
+                                    "ts_trigger_atr_multiple": 1.5,
+                                    "ts_next_atr_level": 1.5,
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
                                     symbol_conceptual_start_balances[order_symbol] = shared_account_balance
                                 global_pending_order = None
 
+            # =========================================================================
+            # ===== START OF REPLACEMENT BLOCK (WITH QUEUE PROCESSING & FIX) =====
+            # =========================================================================
             if not global_active_trade and not global_pending_order:
-                # ------------------- MODIFIED BLOCK START ------------------- #
-                # ✅ This block implements the user's requested logic change.
-                # It now correctly iterates through all queued setups for the current timestamp.
-                # It will promote the FIRST valid one to a pending order, and carry over any
-                # others for the next timestamp, preserving the "one trade at a time" rule.
-                new_setups_for_next_tick = []
-                for setup in delayed_setups_queue:
+                
+                # --- Step 1: Process the delayed setups queue first ---
+                if delayed_setups_queue:
+                    setups_to_process_now = []
+                    setups_to_keep_for_later = []
+                    
+                    # Increment counters and split the queue
+                    for setup in delayed_setups_queue:
+                        setup["confirm_count"] += 1
+                        if setup["confirm_count"] >= 2:
+                            setups_to_process_now.append(setup)
+                        else:
+                            setups_to_keep_for_later.append(setup)
+                            
+                    delayed_setups_queue = setups_to_keep_for_later # Update queue with non-ready setups
 
-                    # If a pending order has ALREADY been created in this same tick from a
-                    # previous setup in this queue, then this current setup must wait.
-                    # Add it to the queue for the next tick and stop processing it for this tick.
-                    if global_pending_order is not None:
-                        new_setups_for_next_tick.append(setup)
-                        continue # Process next setup in the queue
+                    # Now process the confirmed setups (if any)
+                    if setups_to_process_now:
+                        for setup in setups_to_process_now:
+                            # Safety check, if a pending order was created by a previous item in this same tick's list, stop.
+                            if global_pending_order:
+                                delayed_setups_queue.append(setup) # Put back in queue for next tick
+                                continue
+                            
+                            # === USER'S SPECIFIC CHANGE APPLIED HERE ===
+                            # Confirmation Filter 1: Price-based invalidation is REMOVED as requested.
+                            # We now trust the original signal.
+                            
+                            # Confirmation Filter 2: Check risk budget (Still important)
+                            if daily_risk_allocated_on_current_date + setup["risk_amt"] > max_daily_risk_budget_for_current_date + 1e-9:
+                                logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Dropping setup.")
+                                continue # Drop this setup and check the next one
 
-                    # Basic data availability checks for the current timestamp
-                    if setup['symbol'] not in prepared_symbol_data or timestamp not in prepared_symbol_data[setup['symbol']].index:
-                        # Can't process now, keep it for the next tick
-                        new_setups_for_next_tick.append(setup)
-                        continue
+                            # If we get here, the setup is confirmed and becomes a pending order
+                            daily_risk_allocated_on_current_date += setup["risk_amt"]
+                            logger.debug(f"[{setup['symbol']}] Risk {setup['risk_amt']:.2f} allocated for pending order. Daily total: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
+                            
+                            props_pending = ALL_SYMBOL_PROPERTIES[setup['symbol']]
+                            order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
 
-                    # It's a new tick for this setup, increment its confirmation counter
-                    setup['confirm_count'] += 1
+                            global_pending_order = {
+                                "symbol": setup['symbol'], "type": order_type, "entry_price": setup['entry_price'],
+                                "sl_price": setup['sl_price'], "lot_size": setup['lot_size'], "setup_bias": setup['bias'],
+                                "creation_time": timestamp, "intended_risk_amount": setup['risk_amt']
+                            }
+                            logger.info(f"[{setup['symbol']}] {timestamp} CONFIRMED setup converted to PENDING order. Type: {order_type}, Entry: {setup['entry_price']:.{props_pending['digits']}f}, SL: {setup['sl_price']:.{props_pending['digits']}f}")
+                            
+                            # Put remaining setups from this tick back in queue and exit this loop (one pending order at a time)
+                            remaining_setups = [s for s in setups_to_process_now if s != setup]
+                            delayed_setups_queue.extend(remaining_setups)
+                            break 
 
-                    # Wait for 2 candles to pass before we even consider it for an order
-                    if setup['confirm_count'] < 2:
-                        new_setups_for_next_tick.append(setup) # Still waiting, keep it
-                        continue
-
-                    # Now, perform the final confirmation checks
-                    current_candle = prepared_symbol_data[setup['symbol']].loc[timestamp]
-
-                    # Confirmation Filter 1: Trend must still be valid (e.g., price hasn't crossed back over EMA21)
-                    is_invalidated = False
-                    # ✅ MODIFIED from M5_EMA21 to M1_EMA21
-                    if setup['bias'] == "BUY" and current_candle['close'] < current_candle['M1_EMA21']:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed BUY setup invalidated (Price crossed below M1_EMA21).")
-                        is_invalidated = True
-                    elif setup['bias'] == "SELL" and current_candle['close'] > current_candle['M1_EMA21']:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed SELL setup invalidated (Price crossed above M1_EMA21).")
-                        is_invalidated = True
-
-                    if is_invalidated:
-                        continue # This setup is now dropped from all future consideration
-
-                    # Confirmation Filter 2: Check risk budget
-                    if daily_risk_allocated_on_current_date + setup["risk_amt"] > max_daily_risk_budget_for_current_date + 1e-9:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Dropping setup.")
-                        continue # This setup is now dropped from all future consideration
-
-                    # --- If we get here, the setup is confirmed and becomes a pending order ---
-                    order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
-
-                    global_pending_order = {
-                        "symbol": setup["symbol"],
-                        "type": order_type,
-                        "entry_price": setup["entry_price"],
-                        "sl_price": setup["sl_price"],
-                        "created_time": timestamp,
-                        "lot_size": setup["lot_size"],
-                        "setup_bias": setup["bias"],
-                        "intended_risk_amount": setup["risk_amt"]
-                    }
-                    daily_risk_allocated_on_current_date += setup["risk_amt"]
-                    logger.info(f"[{setup['symbol']}] {timestamp} Delayed Setup Confirmed. Placing {order_type} pending order. Risk: {setup['risk_amt']:.2f}")
-                    logger.debug(f"  Portfolio daily risk allocated: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
-
-                    # The loop will continue to the next setup in the queue.
-                    # The check 'if global_pending_order is not None:' at the top
-                    # will now trigger, ensuring any subsequent setups are simply carried over.
-                    continue
-
-                # After checking all setups for this timestamp, update the queue for the next tick.
-                delayed_setups_queue = new_setups_for_next_tick
-                # -------------------- MODIFIED BLOCK END -------------------- #
-
-                if consecutive_losses_count >= 5:
-                    continue
-
-                # Only look for new setups if one was NOT just promoted from the queue
-                if not global_pending_order:
+                # --- Step 2: If no pending order was created, look for new setups ---
+                if not global_pending_order and consecutive_losses_count < 5 and daily_risk_allocated_on_current_date < max_daily_risk_budget_for_current_date:
                     for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
-                        if sym_to_check_setup not in prepared_symbol_data or timestamp not in prepared_symbol_data[sym_to_check_setup].index:
+                        
+                        try:
+                            current_idx = prepared_symbol_data[sym_to_check_setup].index.get_loc(timestamp)
+                        except KeyError:
+                            continue 
+                        if current_idx < 1:
                             continue
+                        previous_candle = prepared_symbol_data[sym_to_check_setup].iloc[current_idx - 1]
 
-                        current_candle_for_setup = prepared_symbol_data[sym_to_check_setup].loc[timestamp]
                         props_setup = ALL_SYMBOL_PROPERTIES[sym_to_check_setup]
-
-                        pip_adj_setup = 3 * props_setup['trade_tick_size']
-
-                        h1_trend_bias_setup = None
-                        m1_setup_bias_setup = None # ✅ MODIFIED from m5_...
-
                         if not is_within_session(timestamp, TRADING_SESSIONS_UTC.get(sym_to_check_setup,[])):
                             continue
 
-                        h1_ema8 = current_candle_for_setup['H1_EMA8']; h1_ema21 = current_candle_for_setup['H1_EMA21']
-                        h1_close = current_candle_for_setup['H1_Close_For_Bias']
+                        h1_ema8 = previous_candle['H1_EMA8']; h1_ema21 = previous_candle['H1_EMA21']
+                        h1_close = previous_candle['H1_Close_For_Bias']
                         if pd.isna(h1_ema8) or pd.isna(h1_ema21) or pd.isna(h1_close): continue
-
-                        if h1_ema8>h1_ema21 and h1_close>h1_ema8 and h1_close>h1_ema21: h1_trend_bias_setup="BUY"
-                        elif h1_ema8<h1_ema21 and h1_close<h1_ema8 and h1_close<h1_ema21: h1_trend_bias_setup="SELL"
+                        
+                        h1_trend_bias_setup = None
+                        if h1_ema8 > h1_ema21 and h1_close > h1_ema8 and h1_close > h1_ema21: h1_trend_bias_setup = "BUY"
+                        elif h1_ema8 < h1_ema21 and h1_close < h1_ema8 and h1_close < h1_ema21: h1_trend_bias_setup = "SELL"
                         if h1_trend_bias_setup is None: continue
 
-                        # ✅ MODIFIED from M5 to M1 variables
-                        m1_ema8 = current_candle_for_setup['M1_EMA8']; m1_ema13 = current_candle_for_setup['M1_EMA13']; m1_ema21_val = current_candle_for_setup['M1_EMA21']
-                        if pd.isna(m1_ema8) or pd.isna(m1_ema13) or pd.isna(m1_ema21_val): continue
+                        m5_ema8 = previous_candle['M5_EMA8']; m5_ema13 = previous_candle['M5_EMA13']; m5_ema21_val = previous_candle['M5_EMA21']
+                        if pd.isna(m5_ema8) or pd.isna(m5_ema13) or pd.isna(m5_ema21_val): continue
+                        
+                        m5_fanned_buy = m5_ema8 > m5_ema13 or m5_ema8 > m5_ema21_val
+                        m5_fanned_sell = m5_ema8 < m5_ema13 or m5_ema8 < m5_ema21_val
+                        is_fanned_for_bias = (h1_trend_bias_setup == "BUY" and m5_fanned_buy) or (h1_trend_bias_setup == "SELL" and m5_fanned_sell)
+                        if not is_fanned_for_bias: continue
 
-                        m1_fanned_buy = m1_ema8 > m1_ema13 or m1_ema8 > m1_ema21_val
-                        m1_fanned_sell = m1_ema8 < m1_ema13 or m1_ema8 < m1_ema21_val
-                        is_fanned_for_bias = (h1_trend_bias_setup == "BUY" and m1_fanned_buy) or (h1_trend_bias_setup == "SELL" and m1_fanned_sell)
-                        if not is_fanned_for_bias:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} M1 EMA structure not aligned enough for {h1_trend_bias_setup} setup. Skipping.")
-                            continue
+                        m5_setup_bias_setup = h1_trend_bias_setup
 
-                        m1_setup_bias_setup = h1_trend_bias_setup
-
-                        h4_ema8 = current_candle_for_setup.get('H4_EMA8', np.nan)
-                        h4_ema21 = current_candle_for_setup.get('H4_EMA21', np.nan)
+                        h4_ema8 = previous_candle.get('H4_EMA8', np.nan)
+                        h4_ema21 = previous_candle.get('H4_EMA21', np.nan)
                         if pd.isna(h4_ema8) or pd.isna(h4_ema21): continue
+                        if (m5_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21) or \
+                           (m5_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21): continue
 
-                        if m1_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21: continue
-                        if m1_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21: continue
+                        rsi_m5 = previous_candle.get('RSI_M5', np.nan); rsi_h1 = previous_candle.get('RSI_H1', np.nan)
+                        if pd.isna(rsi_m5) or pd.isna(rsi_h1): continue
+                        if (m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50)) or \
+                           (m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50)): continue
 
-                        # ✅ MODIFIED from RSI_M5 to RSI_M1
-                        rsi_m1 = current_candle_for_setup.get('RSI_M1', np.nan)
-                        rsi_h1 = current_candle_for_setup.get('RSI_H1', np.nan)
-                        rsi_h4 = current_candle_for_setup.get('RSI_H4', np.nan)
-
-                        if pd.isna(rsi_m1) or pd.isna(rsi_h1) or pd.isna(rsi_h4):
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Missing RSI values. Skipping setup.")
-                            continue
+                        if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
+                           (m5_setup_bias_setup == "SELL" and previous_candle['close'] > m5_ema21_val): continue
                         
-                        # ✅ MODIFIED from RSI_M5 to RSI_M1
-                        if m1_setup_bias_setup == "BUY" and not (rsi_m1 > 50 and rsi_h1 > 50):
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for BUY. M1:{rsi_m1:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
-                            continue
-
-                        # ✅ MODIFIED from RSI_M5 to RSI_M1
-                        if m1_setup_bias_setup == "SELL" and not (rsi_m1 < 50 and rsi_h1 < 50 ):
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for SELL. M1:{rsi_m1:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
-                            continue
-                        
-                        # ✅ MODIFIED from m5_... to m1_...
-                        if (m1_setup_bias_setup=="BUY" and current_candle_for_setup['close'] < m1_ema21_val) or \
-                           (m1_setup_bias_setup=="SELL" and current_candle_for_setup['close'] > m1_ema21_val):
-                            continue
-                        
-                        # ✅ MODIFIED from m5_... to m1_...
-                        pullback = (m1_setup_bias_setup=="BUY" and current_candle_for_setup['low']<=m1_ema8) or \
-                                   (m1_setup_bias_setup=="SELL" and current_candle_for_setup['high']>=m1_ema8)
+                        pullback = (m5_setup_bias_setup == "BUY" and previous_candle['low'] <= m5_ema8) or \
+                                   (m5_setup_bias_setup == "SELL" and previous_candle['high'] >= m5_ema8)
                         if not pullback: continue
+                        
+                        if current_idx < 4: continue
+                        
+                        symbol_df = prepared_symbol_data[sym_to_check_setup]
+                        
+                        recent_candles_weakness = symbol_df.iloc[current_idx - 5 : current_idx - 1]
+                        if len(recent_candles_weakness) < 4: continue
+                        bullish_count = (recent_candles_weakness['close'] > recent_candles_weakness['open']).sum()
+                        bearish_count = (recent_candles_weakness['close'] < recent_candles_weakness['open']).sum()
+                        if (m5_setup_bias_setup == "BUY" and bullish_count > 2) or \
+                           (m5_setup_bias_setup == "SELL" and bearish_count > 2): continue
 
-                        symbol_df_for_weakness_filter = prepared_symbol_data[sym_to_check_setup]
-                        try:
-                            current_idx_for_weakness_filter = symbol_df_for_weakness_filter.index.get_loc(timestamp)
-                        except KeyError:
-                            logger.warning(f"[{sym_to_check_setup}] {timestamp} Timestamp not found in DataFrame for weakness filter. Skipping setup.")
-                            continue
+                        atr_val = previous_candle.get('ATR', np.nan)
+                        if pd.isna(atr_val) or atr_val <= 0: continue
 
-                        current_idx_in_symbol_df_for_lookback = current_idx_for_weakness_filter # Use the same index
-
-                        if current_idx_for_weakness_filter < 4:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough preceding M1 candles for weakness filter ({current_idx_for_weakness_filter} total candles up to current). Skipping setup.")
-                            continue
-                        recent_candles = symbol_df_for_weakness_filter.iloc[current_idx_for_weakness_filter - 4 : current_idx_for_weakness_filter]
-                        if len(recent_candles) < 4:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Sliced less than 4 preceding M1 candles for weakness filter ({len(recent_candles)} found). Skipping setup.")
-                            continue
-                        bullish_count = (recent_candles['close'] > recent_candles['open']).sum()
-                        bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
-
-                        if m1_setup_bias_setup == "BUY" and bullish_count > 2:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bullish M1 candles ({bullish_count}/4). Skipping BUY setup.")
-                            continue
-
-                        if m1_setup_bias_setup == "SELL" and bearish_count > 2:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bearish M1 candles ({bearish_count}/4). Skipping SELL setup.")
-                            continue
-
-                        atr_val = current_candle_for_setup.get('ATR', np.nan)
-                        if pd.isna(atr_val) or atr_val <= 0:
-                            continue
-
-                        # Identify last swing leg (simple: last 10 candles)
-                        lookback_window = 10
-                        if current_idx_in_symbol_df_for_lookback >= lookback_window:
-                            recent_candles = prepared_symbol_data[sym_to_check_setup].iloc[current_idx_in_symbol_df_for_lookback - lookback_window: current_idx_in_symbol_df_for_lookback]
-                            swing_high = recent_candles['high'].max()
-                            swing_low = recent_candles['low'].min()
-                        else:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough data for Swing/Pullback analysis.")
-                            continue
-
-                        # --- NEW PULLBACK FILTER LOGIC START ---
-                        # ✅ Step 2: Identify the Impulse Leg
-                        if m1_setup_bias_setup == "BUY":
-                            impulse_start = swing_low
-                            impulse_end = swing_high
-                            current_price = current_candle_for_setup['low']
-                        else: # SELL
-                            impulse_start = swing_high
-                            impulse_end = swing_low
-                            current_price = current_candle_for_setup['high']
-
-                        # ✅ Step 3: Calculate Pullback Depth and Apply Filter
-                        pullback_depth = calculate_pullback_depth(impulse_start, impulse_end, current_price, m1_setup_bias_setup)
-                        min_required_pullback = 0.30  # 30%
-
-                        if pullback_depth < min_required_pullback:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Pullback too shallow ({pullback_depth*100:.1f}%). Skipping.")
-                            continue
-                        # --- NEW PULLBACK FILTER LOGIC END ---
-
-                        #Fibonacci Logic - must come AFTER swing is identified
-                        if m1_setup_bias_setup == "BUY":
-                            fib_levels = calculate_fib_levels(swing_high, swing_low)
-                        else:
-                            fib_levels = calculate_fib_levels(swing_low, swing_high)  # reversed for SELL
-
-                        # Check for Confluence with EMA8 or EMA13
-                        ema8 = current_candle_for_setup['M1_EMA8']
-                        ema13 = current_candle_for_setup['M1_EMA13']
-                        tolerance = 0.5 * atr_val # Define how close is "confluent"
-
-                        confluent = False
-                        for level_key in ['0.382', '0.5', '0.618']:
-                            fib_price = fib_levels[level_key]
-                            if abs(ema8 - fib_price) <= tolerance or abs(ema13 - fib_price) <= tolerance:
-                                confluent = True
-                                break
-
-                        if not confluent:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} No EMA-Fib confluence. Skipping.")
-                            continue
-
+                        lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
+                        
+                        pip_adj_setup = 3 * props_setup['trade_tick_size']
                         sl_distance_atr = 1.5 * atr_val
-
-                        symbol_df_for_lookback = prepared_symbol_data[sym_to_check_setup]
-                        if current_idx_in_symbol_df_for_lookback < 4:
-                            continue
-
-                        lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-2 : current_idx_in_symbol_df_for_lookback+1]
-                        entry_px, sl_px, order_type_setup = (0,0,"")
-                        if m1_setup_bias_setup=="BUY":
+                        entry_px, sl_px = (0, 0)
+                        
+                        if m5_setup_bias_setup == "BUY":
                             entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup
                             sl_px = entry_px - sl_distance_atr
                         else: # SELL
                             entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup
                             sl_px = entry_px + sl_distance_atr
-                        entry_px=round(entry_px, props_setup['digits'])
-                        sl_px=round(sl_px, props_setup['digits'])
-                        sl_diff = abs(entry_px - sl_px)
-                        if sl_diff <= 0:
-                            continue
+
+                        entry_px = round(entry_px, props_setup['digits'])
+                        sl_px = round(sl_px, props_setup['digits'])
+                        
+                        if abs(entry_px - sl_px) <= 0: continue
 
                         lot_size_fixed_min = props_setup.get("volume_min", 0.01)
-                        tick_val_setup = props_setup["trade_tick_value"]
-                        tick_size_setup = props_setup["trade_tick_size"]
-                        estimated_risk_min_lot = 0.0
-                        if tick_size_setup > 0 and tick_val_setup > 0:
-                            estimated_risk_min_lot = lot_size_fixed_min * (sl_diff / tick_size_setup) * tick_val_setup
-                        else:
-                            logger.warning(f"[{sym_to_check_setup}] {timestamp} Invalid tick_size ({tick_size_setup}) or tick_value ({tick_val_setup}) for risk estimation. Skipping trade.")
-                            continue
-                        if estimated_risk_min_lot <= 0:
-                            logger.warning(f"[{sym_to_check_setup}] {timestamp} Estimated risk with min lot is zero or negative ({estimated_risk_min_lot:.2f}). SL diff: {sl_diff:.{props_setup['digits']}f}. Skipping trade.")
-                            continue
+                        estimated_risk_min_lot = lot_size_fixed_min * (abs(entry_px - sl_px) / props_setup['trade_tick_size']) * props_setup['trade_tick_value'] if props_setup['trade_tick_size'] > 0 else 0
+                        if estimated_risk_min_lot <= 0: continue
+                        
                         max_allowed_risk_per_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
-                        if estimated_risk_min_lot > max_allowed_risk_per_trade:
-                            logger.info(f"[{sym_to_check_setup}] {timestamp} SKIP PENDING: Min lot ({lot_size_fixed_min}) risk ({estimated_risk_min_lot:.2f}) for SL {sl_diff:.{props_setup['digits']}f} exceeds {RISK_PER_TRADE_PERCENT*100:.2f}% of balance ({max_allowed_risk_per_trade:.2f}).")
-                            continue
-
-                        # Modify Setup Detection to Queue, Not Place Order
+                        if estimated_risk_min_lot > max_allowed_risk_per_trade: continue
+                        
                         delayed_setups_queue.append({
-                            "symbol": sym_to_check_setup,
-                            "timestamp": timestamp,
-                            "bias": m1_setup_bias_setup,
-                            "entry_price": entry_px,
-                            "sl_price": sl_px,
-                            "lot_size": lot_size_fixed_min,
-                            "risk_amt": estimated_risk_min_lot,
-                            "confirm_count": 0  # tracks how many candles passed
+                            "symbol": sym_to_check_setup, "timestamp": timestamp, "bias": m5_setup_bias_setup,
+                            "entry_price": entry_px, "sl_price": sl_px, "lot_size": lot_size_fixed_min,
+                            "risk_amt": estimated_risk_min_lot, "confirm_count": 0
                         })
-                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED for delayed confirmation. Bias: {m1_setup_bias_setup}, Entry: {entry_px:.{props_setup['digits']}f}")
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED. Bias: {m5_setup_bias_setup}, Entry: {entry_px}")
 
-                        # ✅ MODIFIED: Removed the 'break' statement.
-                        # The loop will now continue to check other symbols for the same timestamp.
+            # =========================================================================
+            # ===== END OF REPLACEMENT BLOCK =====
+            # =========================================================================
 
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
 
