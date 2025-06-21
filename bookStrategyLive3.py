@@ -63,8 +63,8 @@ COMMISSIONS = {
 NEWS_TIMES_UTC = {
 "USDCHF": [],  "USDCAD": [], "NZDUSD": [],
 "ETHUSD": [], "BTCUSD": [], "EURUSD": [],
-"AUDJPY": ["6:40"], "GBPUSD": ["6:00"], "USDJPY": [],
-"USOIL": [], "XAUUSD":[], "GBPJPY":["6:00","6:40"], "BTCJPY":["6:40"]
+"AUDJPY": [], "GBPUSD": [], "USDJPY": [], 
+"USOIL": [], "XAUUSD":[], "GBPJPY":[], "BTCJPY":[]
 }
 
 # --- CSV File Recording Configuration ---

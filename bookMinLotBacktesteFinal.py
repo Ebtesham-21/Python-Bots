@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import logging
 import math
 import matplotlib.pyplot as plt # Added for plotting
+import csv # ✅ Step 1: Import the Required Modules
+import os # ✅ Step 1: Import the Required Modules
 
 # --- Logger Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,6 +18,15 @@ logger = logging.getLogger(__name__)
 SYMBOLS_AVAILABLE_FOR_TRADE = []
 ALL_SYMBOL_PROPERTIES = {}
 RUN_BACKTEST = True # Important for the provided MT5 init function
+
+# ✅ Step 2: 🧾 Define the CSV File & Headers
+TRADE_HISTORY_FILE = "backtest_trade_history.csv"
+CSV_HEADERS = [
+    "Symbol", "Type", "EntryTimeUTC", "EntryPrice",
+    "LotSize", "SL", "TP",
+    "ExitTimeUTC", "ExitPrice", "Status",
+    "Commission", "PnL_Currency", "BalanceAfterTrade"
+]
 
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
@@ -58,6 +69,32 @@ COMMISSIONS = {
     "XAUUSD":0.11,
 }
 
+# ✅ Step 3: 📌 Create a Function to Initialize the File
+def initialize_trade_history_file():
+    if not os.path.exists(TRADE_HISTORY_FILE):
+        with open(TRADE_HISTORY_FILE, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(CSV_HEADERS)
+
+# ✅ Step 4: ✍️ Create a Function to Log Each Trade
+def log_backtest_trade_to_csv(trade):
+    with open(TRADE_HISTORY_FILE, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([
+            trade.get("symbol"),
+            trade.get("type"),
+            trade.get("entry_time"),
+            trade.get("entry_price"),
+            trade.get("lot_size"),
+            trade.get("initial_sl"),
+            trade.get("tp"),
+            trade.get("exit_time"),
+            trade.get("exit_price"),
+            trade.get("status"),
+            trade.get("commission"),
+            trade.get("pnl_currency"),
+            trade.get("balance_after_trade")
+        ])
 
 # --- MT5 Initialization and Shutdown ---
 def initialize_mt5_interface(symbols_to_check):
@@ -241,6 +278,7 @@ def calculate_performance_stats(trades_list, initial_balance_for_period):
         stats["max_drawdown_pct"] = 0.0
     return stats
 
+# --- FIX APPLIED IN THIS FUNCTION ---
 def analyze_rr_distribution(closed_trades, symbol_properties_dict):
     """
     Analyzes the distribution of closed trades based on their Risk-to-Reward ratio.
@@ -252,13 +290,14 @@ def analyze_rr_distribution(closed_trades, symbol_properties_dict):
     Returns:
         dict: A dictionary with RR buckets as keys and trade counts as values.
     """
+    # CORRECTED: The dictionary keys now exactly match the strings used in the logic below.
     rr_buckets = {
         "Stop Loss (~ -1R)": 0,
         "Partial Loss (< 0R)": 0,
-        "Break Even (0R to <1R)": 0,
-        "1R to <2R": 0,
-        "2R to <3R": 0,
-        "3R to <4R": 0,
+        "Break Even (0R to <1R>)": 0,
+        "1R to <2R>": 0,
+        "2R to <3R>": 0,
+        "3R to <4R>": 0,
         "Take Profit (>= 4R)": 0,
         "Other/Error": 0
     }
@@ -293,13 +332,13 @@ def analyze_rr_distribution(closed_trades, symbol_properties_dict):
         if rr_value >= 4.0:
             rr_buckets["Take Profit (>= 4R)"] += 1
         elif 3.0 <= rr_value < 4.0:
-            rr_buckets["3R to <4R"] += 1
+            rr_buckets["3R to <4R>"] += 1
         elif 2.0 <= rr_value < 3.0:
-            rr_buckets["2R to <3R"] += 1
+            rr_buckets["2R to <3R>"] += 1
         elif 1.0 <= rr_value < 2.0:
-            rr_buckets["1R to <2R"] += 1
+            rr_buckets["1R to <2R>"] += 1
         elif 0.0 <= rr_value < 1.0:
-            rr_buckets["Break Even (0R to <1R)"] += 1
+            rr_buckets["Break Even (0R to <1R>)"] += 1
         elif abs(rr_value + 1.0) < 0.05: # If RR is very close to -1
             rr_buckets["Stop Loss (~ -1R)"] += 1
         else: # Any other loss that wasn't a clean stop out (e.g., trailing stop hit for a loss)
@@ -367,20 +406,20 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_h4_resampled_rsi = pd.DataFrame(columns=['RSI_H4'])
         df_h4_resampled_rsi['RSI_H4'] = np.nan
 
-    # --- M5 Data ---
-    df_m5 = get_historical_data(symbol, mt5.TIMEFRAME_M5, start_date, end_date)
-    if df_m5.empty: return pd.DataFrame()
-    df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
-    df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13)
-    df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
-    if len(df_m5) >= 14:
-        df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
+    # --- M1 Data --- (✅ MODIFIED from M5 to M1)
+    df_m1 = get_historical_data(symbol, mt5.TIMEFRAME_M1, start_date, end_date)
+    if df_m1.empty: return pd.DataFrame()
+    df_m1['M1_EMA8'] = ta.ema(df_m1['close'], length=8)
+    df_m1['M1_EMA13'] = ta.ema(df_m1['close'], length=13)
+    df_m1['M1_EMA21'] = ta.ema(df_m1['close'], length=21)
+    if len(df_m1) >= 14:
+        df_m1['ATR'] = ta.atr(df_m1['high'], df_m1['low'], df_m1['close'], length=14)
     else:
-        df_m5['ATR'] = np.nan
-    df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14) # 🧮 For M5 RSI (User Step 1)
+        df_m1['ATR'] = np.nan
+    df_m1['RSI_M1'] = ta.rsi(df_m1['close'], length=14) # 🧮 For M1 RSI (User Step 1)
 
-    # Initial merge for M5 data + H1 EMAs/Close
-    combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled_emas.sort_index(),
+    # Initial merge for M1 data + H1 EMAs/Close (✅ MODIFIED from df_m5 to df_m1)
+    combined_df = pd.merge_asof(df_m1.sort_index(), df_h1_resampled_emas.sort_index(),
                                 left_index=True, right_index=True,
                                 direction='backward', tolerance=pd.Timedelta(hours=1))
 
@@ -412,8 +451,11 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 2, 1)
-    end_datetime = datetime(2025, 2, 28)
+    start_datetime = datetime(2025, 6, 13)
+    end_datetime = datetime(2025, 6, 20)
+    
+    # ✅ Call initialization function once
+    initialize_trade_history_file()
 
     buffer_days = 15
     data_fetch_start_date = start_datetime - timedelta(days=buffer_days)
@@ -469,7 +511,7 @@ if __name__ == "__main__":
             exit()
 
         master_time_index = sorted(list(master_time_index_set))
-        logger.info(f"Master time index created with {len(master_time_index)} M5 candles to process.")
+        logger.info(f"Master time index created with {len(master_time_index)} M1 candles to process.") # ✅ MODIFIED Log Message
 
         for timestamp in master_time_index:
             candle_date = timestamp.date()
@@ -534,6 +576,8 @@ if __name__ == "__main__":
                         logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): Raw P&L: {raw_pnl:.2f}, Comm: {commission_cost:.2f}, Net P&L: {global_active_trade['pnl_currency']:.2f}, New Portfolio Bal: {shared_account_balance:.2f}")
                         all_closed_trades_portfolio.append(global_active_trade.copy())
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
+                        # ✅ Step 5: 🔁 Call This After Each Trade Closes
+                        log_backtest_trade_to_csv(global_active_trade)
                         global_active_trade = None
 
                     if global_active_trade and not closed_this_bar:
@@ -592,14 +636,15 @@ if __name__ == "__main__":
                     sl_price_pending = global_pending_order['sl_price']
                     order_type_pending = global_pending_order['type']
                     lot_size_pending = global_pending_order['lot_size']
-                    m5_ema21_for_invalidation = current_candle_for_pending_order['M5_EMA21']
+                    # ✅ MODIFIED from M5_EMA21 to M1_EMA21
+                    m1_ema21_for_invalidation = current_candle_for_pending_order['M1_EMA21']
                     setup_invalidated = False
-                    if global_pending_order['setup_bias'] == "BUY" and current_candle_for_pending_order['close'] < m5_ema21_for_invalidation:
+                    if global_pending_order['setup_bias'] == "BUY" and current_candle_for_pending_order['close'] < m1_ema21_for_invalidation:
                         setup_invalidated = True
-                        logger.info(f"[{order_symbol}] {timestamp} PENDING BUY order invalidated (Close < M5_EMA21 before trigger).")
-                    elif global_pending_order['setup_bias'] == "SELL" and current_candle_for_pending_order['close'] > m5_ema21_for_invalidation:
+                        logger.info(f"[{order_symbol}] {timestamp} PENDING BUY order invalidated (Close < M1_EMA21 before trigger).")
+                    elif global_pending_order['setup_bias'] == "SELL" and current_candle_for_pending_order['close'] > m1_ema21_for_invalidation:
                         setup_invalidated = True
-                        logger.info(f"[{order_symbol}] {timestamp} PENDING SELL order invalidated (Close > M5_EMA21 before trigger).")
+                        logger.info(f"[{order_symbol}] {timestamp} PENDING SELL order invalidated (Close > M1_EMA21 before trigger).")
                     if setup_invalidated:
                         daily_risk_allocated_on_current_date -= global_pending_order['intended_risk_amount']
                         logger.debug(f"[{order_symbol}] Risk {global_pending_order['intended_risk_amount']:.2f} refunded due to pending order invalidation. Daily allocated: {daily_risk_allocated_on_current_date:.2f}")
@@ -636,42 +681,58 @@ if __name__ == "__main__":
                                 global_pending_order = None
 
             if not global_active_trade and not global_pending_order:
-                # ✅ Step 3: In Each Time Step, Process the Delay Queue
-                # Step through delayed setups
-                new_queue = []
+                # ------------------- MODIFIED BLOCK START ------------------- #
+                # ✅ This block implements the user's requested logic change.
+                # It now correctly iterates through all queued setups for the current timestamp.
+                # It will promote the FIRST valid one to a pending order, and carry over any
+                # others for the next timestamp, preserving the "one trade at a time" rule.
+                new_setups_for_next_tick = []
                 for setup in delayed_setups_queue:
-                    if setup['symbol'] not in prepared_symbol_data:
-                        continue
-                    if timestamp not in prepared_symbol_data[setup['symbol']].index:
-                        # If current timestamp is missing for this symbol's data, keep it in the queue
-                        # but don't increment its counter.
-                        new_queue.append(setup)
+
+                    # If a pending order has ALREADY been created in this same tick from a
+                    # previous setup in this queue, then this current setup must wait.
+                    # Add it to the queue for the next tick and stop processing it for this tick.
+                    if global_pending_order is not None:
+                        new_setups_for_next_tick.append(setup)
+                        continue # Process next setup in the queue
+
+                    # Basic data availability checks for the current timestamp
+                    if setup['symbol'] not in prepared_symbol_data or timestamp not in prepared_symbol_data[setup['symbol']].index:
+                        # Can't process now, keep it for the next tick
+                        new_setups_for_next_tick.append(setup)
                         continue
 
+                    # It's a new tick for this setup, increment its confirmation counter
                     setup['confirm_count'] += 1
 
-                    # Wait 2 candles (i.e., 10 minutes)
+                    # Wait for 2 candles to pass before we even consider it for an order
                     if setup['confirm_count'] < 2:
-                        new_queue.append(setup)
+                        new_setups_for_next_tick.append(setup) # Still waiting, keep it
                         continue
 
+                    # Now, perform the final confirmation checks
                     current_candle = prepared_symbol_data[setup['symbol']].loc[timestamp]
 
-                    # Confirm the trend is still valid (reapply filters like M5 EMA21 check)
-                    if setup['bias'] == "BUY" and current_candle['close'] < current_candle['M5_EMA21']:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed BUY setup invalidated. Not placing order.")
-                        continue # Invalidated, so don't add to new_queue
-                    if setup['bias'] == "SELL" and current_candle['close'] > current_candle['M5_EMA21']:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed SELL setup invalidated. Not placing order.")
-                        continue # Invalidated, so don't add to new_queue
+                    # Confirmation Filter 1: Trend must still be valid (e.g., price hasn't crossed back over EMA21)
+                    is_invalidated = False
+                    # ✅ MODIFIED from M5_EMA21 to M1_EMA21
+                    if setup['bias'] == "BUY" and current_candle['close'] < current_candle['M1_EMA21']:
+                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed BUY setup invalidated (Price crossed below M1_EMA21).")
+                        is_invalidated = True
+                    elif setup['bias'] == "SELL" and current_candle['close'] > current_candle['M1_EMA21']:
+                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed SELL setup invalidated (Price crossed above M1_EMA21).")
+                        is_invalidated = True
 
-                    # Setup confirmed → place order
-                    order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
+                    if is_invalidated:
+                        continue # This setup is now dropped from all future consideration
 
-                    # Double-check daily risk budget before placing the order
+                    # Confirmation Filter 2: Check risk budget
                     if daily_risk_allocated_on_current_date + setup["risk_amt"] > max_daily_risk_budget_for_current_date + 1e-9:
-                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Cancelling.")
-                        continue # Exceeds risk, so don't place and don't re-queue
+                        logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Dropping setup.")
+                        continue # This setup is now dropped from all future consideration
+
+                    # --- If we get here, the setup is confirmed and becomes a pending order ---
+                    order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
 
                     global_pending_order = {
                         "symbol": setup["symbol"],
@@ -683,19 +744,18 @@ if __name__ == "__main__":
                         "setup_bias": setup["bias"],
                         "intended_risk_amount": setup["risk_amt"]
                     }
-
                     daily_risk_allocated_on_current_date += setup["risk_amt"]
                     logger.info(f"[{setup['symbol']}] {timestamp} Delayed Setup Confirmed. Placing {order_type} pending order. Risk: {setup['risk_amt']:.2f}")
                     logger.debug(f"  Portfolio daily risk allocated: {daily_risk_allocated_on_current_date:.2f}/{max_daily_risk_budget_for_current_date:.2f}")
 
-                    # Once one setup is promoted to a pending order, stop processing the queue for this tick.
-                    # This maintains the "one trade at a time" rule.
-                    # Any remaining setups in the old queue will be added to the new queue to be processed on the next tick.
-                    new_queue.extend(delayed_setups_queue[delayed_setups_queue.index(setup)+1:])
-                    break
+                    # The loop will continue to the next setup in the queue.
+                    # The check 'if global_pending_order is not None:' at the top
+                    # will now trigger, ensuring any subsequent setups are simply carried over.
+                    continue
 
-                # Update queue
-                delayed_setups_queue = new_queue
+                # After checking all setups for this timestamp, update the queue for the next tick.
+                delayed_setups_queue = new_setups_for_next_tick
+                # -------------------- MODIFIED BLOCK END -------------------- #
 
                 if consecutive_losses_count >= 5:
                     continue
@@ -712,7 +772,7 @@ if __name__ == "__main__":
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
 
                         h1_trend_bias_setup = None
-                        m5_setup_bias_setup = None
+                        m1_setup_bias_setup = None # ✅ MODIFIED from m5_...
 
                         if not is_within_session(timestamp, TRADING_SESSIONS_UTC.get(sym_to_check_setup,[])):
                             continue
@@ -725,47 +785,53 @@ if __name__ == "__main__":
                         elif h1_ema8<h1_ema21 and h1_close<h1_ema8 and h1_close<h1_ema21: h1_trend_bias_setup="SELL"
                         if h1_trend_bias_setup is None: continue
 
-                        m5_ema8 = current_candle_for_setup['M5_EMA8']; m5_ema13 = current_candle_for_setup['M5_EMA13']; m5_ema21_val = current_candle_for_setup['M5_EMA21']
-                        if pd.isna(m5_ema8) or pd.isna(m5_ema13) or pd.isna(m5_ema21_val): continue
+                        # ✅ MODIFIED from M5 to M1 variables
+                        m1_ema8 = current_candle_for_setup['M1_EMA8']; m1_ema13 = current_candle_for_setup['M1_EMA13']; m1_ema21_val = current_candle_for_setup['M1_EMA21']
+                        if pd.isna(m1_ema8) or pd.isna(m1_ema13) or pd.isna(m1_ema21_val): continue
 
-                        m5_fanned_buy = m5_ema8 > m5_ema13 or m5_ema8 > m5_ema21_val
-                        m5_fanned_sell = m5_ema8 < m5_ema13 or m5_ema8 < m5_ema21_val
-                        is_fanned_for_bias = (h1_trend_bias_setup == "BUY" and m5_fanned_buy) or (h1_trend_bias_setup == "SELL" and m5_fanned_sell)
+                        m1_fanned_buy = m1_ema8 > m1_ema13 or m1_ema8 > m1_ema21_val
+                        m1_fanned_sell = m1_ema8 < m1_ema13 or m1_ema8 < m1_ema21_val
+                        is_fanned_for_bias = (h1_trend_bias_setup == "BUY" and m1_fanned_buy) or (h1_trend_bias_setup == "SELL" and m1_fanned_sell)
                         if not is_fanned_for_bias:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} M5 EMA structure not aligned enough for {h1_trend_bias_setup} setup. Skipping.")
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} M1 EMA structure not aligned enough for {h1_trend_bias_setup} setup. Skipping.")
                             continue
 
-                        m5_setup_bias_setup = h1_trend_bias_setup
+                        m1_setup_bias_setup = h1_trend_bias_setup
 
                         h4_ema8 = current_candle_for_setup.get('H4_EMA8', np.nan)
                         h4_ema21 = current_candle_for_setup.get('H4_EMA21', np.nan)
                         if pd.isna(h4_ema8) or pd.isna(h4_ema21): continue
 
-                        if m5_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21: continue
-                        if m5_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21: continue
+                        if m1_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21: continue
+                        if m1_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21: continue
 
-                        rsi_m5 = current_candle_for_setup.get('RSI_M5', np.nan)
+                        # ✅ MODIFIED from RSI_M5 to RSI_M1
+                        rsi_m1 = current_candle_for_setup.get('RSI_M1', np.nan)
                         rsi_h1 = current_candle_for_setup.get('RSI_H1', np.nan)
                         rsi_h4 = current_candle_for_setup.get('RSI_H4', np.nan)
 
-                        if pd.isna(rsi_m5) or pd.isna(rsi_h1) or pd.isna(rsi_h4):
+                        if pd.isna(rsi_m1) or pd.isna(rsi_h1) or pd.isna(rsi_h4):
                             logger.debug(f"[{sym_to_check_setup}] {timestamp} Missing RSI values. Skipping setup.")
                             continue
-
-                        if m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50):
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for BUY. M5:{rsi_m5:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
+                        
+                        # ✅ MODIFIED from RSI_M5 to RSI_M1
+                        if m1_setup_bias_setup == "BUY" and not (rsi_m1 > 50 and rsi_h1 > 50):
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for BUY. M1:{rsi_m1:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
                             continue
 
-                        if m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50 ):
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for SELL. M5:{rsi_m5:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
+                        # ✅ MODIFIED from RSI_M5 to RSI_M1
+                        if m1_setup_bias_setup == "SELL" and not (rsi_m1 < 50 and rsi_h1 < 50 ):
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} RSI misalignment for SELL. M1:{rsi_m1:.1f} H1:{rsi_h1:.1f} H4:{rsi_h4:.1f}")
                             continue
-
-                        if (m5_setup_bias_setup=="BUY" and current_candle_for_setup['close'] < m5_ema21_val) or \
-                           (m5_setup_bias_setup=="SELL" and current_candle_for_setup['close'] > m5_ema21_val):
+                        
+                        # ✅ MODIFIED from m5_... to m1_...
+                        if (m1_setup_bias_setup=="BUY" and current_candle_for_setup['close'] < m1_ema21_val) or \
+                           (m1_setup_bias_setup=="SELL" and current_candle_for_setup['close'] > m1_ema21_val):
                             continue
-
-                        pullback = (m5_setup_bias_setup=="BUY" and current_candle_for_setup['low']<=m5_ema8) or \
-                                   (m5_setup_bias_setup=="SELL" and current_candle_for_setup['high']>=m5_ema8)
+                        
+                        # ✅ MODIFIED from m5_... to m1_...
+                        pullback = (m1_setup_bias_setup=="BUY" and current_candle_for_setup['low']<=m1_ema8) or \
+                                   (m1_setup_bias_setup=="SELL" and current_candle_for_setup['high']>=m1_ema8)
                         if not pullback: continue
 
                         symbol_df_for_weakness_filter = prepared_symbol_data[sym_to_check_setup]
@@ -778,21 +844,21 @@ if __name__ == "__main__":
                         current_idx_in_symbol_df_for_lookback = current_idx_for_weakness_filter # Use the same index
 
                         if current_idx_for_weakness_filter < 4:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough preceding M5 candles for weakness filter ({current_idx_for_weakness_filter} total candles up to current). Skipping setup.")
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Not enough preceding M1 candles for weakness filter ({current_idx_for_weakness_filter} total candles up to current). Skipping setup.")
                             continue
                         recent_candles = symbol_df_for_weakness_filter.iloc[current_idx_for_weakness_filter - 4 : current_idx_for_weakness_filter]
                         if len(recent_candles) < 4:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Sliced less than 4 preceding M5 candles for weakness filter ({len(recent_candles)} found). Skipping setup.")
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Sliced less than 4 preceding M1 candles for weakness filter ({len(recent_candles)} found). Skipping setup.")
                             continue
                         bullish_count = (recent_candles['close'] > recent_candles['open']).sum()
                         bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
 
-                        if m5_setup_bias_setup == "BUY" and bullish_count > 2:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bullish M5 candles ({bullish_count}/4). Skipping BUY setup.")
+                        if m1_setup_bias_setup == "BUY" and bullish_count > 2:
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bullish M1 candles ({bullish_count}/4). Skipping BUY setup.")
                             continue
 
-                        if m5_setup_bias_setup == "SELL" and bearish_count > 2:
-                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bearish M5 candles ({bearish_count}/4). Skipping SELL setup.")
+                        if m1_setup_bias_setup == "SELL" and bearish_count > 2:
+                            logger.debug(f"[{sym_to_check_setup}] {timestamp} Preceding Bar Weakness Filter: Too many prior bearish M1 candles ({bearish_count}/4). Skipping SELL setup.")
                             continue
 
                         atr_val = current_candle_for_setup.get('ATR', np.nan)
@@ -811,7 +877,7 @@ if __name__ == "__main__":
 
                         # --- NEW PULLBACK FILTER LOGIC START ---
                         # ✅ Step 2: Identify the Impulse Leg
-                        if m5_setup_bias_setup == "BUY":
+                        if m1_setup_bias_setup == "BUY":
                             impulse_start = swing_low
                             impulse_end = swing_high
                             current_price = current_candle_for_setup['low']
@@ -821,7 +887,7 @@ if __name__ == "__main__":
                             current_price = current_candle_for_setup['high']
 
                         # ✅ Step 3: Calculate Pullback Depth and Apply Filter
-                        pullback_depth = calculate_pullback_depth(impulse_start, impulse_end, current_price, m5_setup_bias_setup)
+                        pullback_depth = calculate_pullback_depth(impulse_start, impulse_end, current_price, m1_setup_bias_setup)
                         min_required_pullback = 0.30  # 30%
 
                         if pullback_depth < min_required_pullback:
@@ -830,14 +896,14 @@ if __name__ == "__main__":
                         # --- NEW PULLBACK FILTER LOGIC END ---
 
                         #Fibonacci Logic - must come AFTER swing is identified
-                        if m5_setup_bias_setup == "BUY":
+                        if m1_setup_bias_setup == "BUY":
                             fib_levels = calculate_fib_levels(swing_high, swing_low)
                         else:
                             fib_levels = calculate_fib_levels(swing_low, swing_high)  # reversed for SELL
 
                         # Check for Confluence with EMA8 or EMA13
-                        ema8 = current_candle_for_setup['M5_EMA8']
-                        ema13 = current_candle_for_setup['M5_EMA13']
+                        ema8 = current_candle_for_setup['M1_EMA8']
+                        ema13 = current_candle_for_setup['M1_EMA13']
                         tolerance = 0.5 * atr_val # Define how close is "confluent"
 
                         confluent = False
@@ -859,7 +925,7 @@ if __name__ == "__main__":
 
                         lookback_df_for_entry = symbol_df_for_lookback.iloc[current_idx_in_symbol_df_for_lookback-2 : current_idx_in_symbol_df_for_lookback+1]
                         entry_px, sl_px, order_type_setup = (0,0,"")
-                        if m5_setup_bias_setup=="BUY":
+                        if m1_setup_bias_setup=="BUY":
                             entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup
                             sl_px = entry_px - sl_distance_atr
                         else: # SELL
@@ -892,17 +958,17 @@ if __name__ == "__main__":
                         delayed_setups_queue.append({
                             "symbol": sym_to_check_setup,
                             "timestamp": timestamp,
-                            "bias": m5_setup_bias_setup,
+                            "bias": m1_setup_bias_setup,
                             "entry_price": entry_px,
                             "sl_price": sl_px,
                             "lot_size": lot_size_fixed_min,
                             "risk_amt": estimated_risk_min_lot,
                             "confirm_count": 0  # tracks how many candles passed
                         })
-                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED for delayed confirmation. Bias: {m5_setup_bias_setup}, Entry: {entry_px:.{props_setup['digits']}f}")
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED for delayed confirmation. Bias: {m1_setup_bias_setup}, Entry: {entry_px:.{props_setup['digits']}f}")
 
-                        # Break after finding and queuing one setup
-                        break
+                        # ✅ MODIFIED: Removed the 'break' statement.
+                        # The loop will now continue to check other symbols for the same timestamp.
 
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
 
