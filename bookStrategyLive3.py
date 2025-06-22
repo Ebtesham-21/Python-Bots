@@ -46,6 +46,9 @@ CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 14)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 14
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
+# --- NEW: Define a list of crypto symbols for the weekend check ---
+CRYPTO_SYMBOLS = list(CRYPTO_SESSIONS_USER.keys())
+
 RISK_PER_TRADE_PERCENT = 0.01  # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
 
@@ -63,7 +66,7 @@ COMMISSIONS = {
 NEWS_TIMES_UTC = {
 "USDCHF": [],  "USDCAD": [], "NZDUSD": [],
 "ETHUSD": [], "BTCUSD": [], "EURUSD": [],
-"AUDJPY": [], "GBPUSD": [], "USDJPY": [], 
+"AUDJPY": [], "GBPUSD": [], "USDJPY": [],
 "USOIL": [], "XAUUSD":[], "GBPJPY":[], "BTCJPY":[]
 }
 
@@ -96,11 +99,11 @@ def load_state_from_csv():
 
     try:
         df = pd.read_csv(TRADE_HISTORY_FILE, dtype={'PositionID': str})
-        
+
         # --- FIX: Filter for rows where PositionID is a valid number string ---
         # This robustly removes summary lines and other non-trade data which caused the error.
         df = df[df['PositionID'].str.isdigit().fillna(False)]
-        
+
         open_trades_df = df[df['CloseTimeUTC'].isnull() | (df['CloseTimeUTC'] == '')]
         for _, row in open_trades_df.iterrows():
             pos_id = str(row['PositionID'])
@@ -165,7 +168,7 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
         return
     try:
         df_all = pd.read_csv(csv_filepath, dtype={'PositionID': str, 'PNL_AccountCCY': str})
-        
+
         # Filter out any non-trade rows (e.g., previous summaries)
         df_trades_only = df_all[df_all['PositionID'].str.isdigit().fillna(False)].copy()
         if df_trades_only.empty:
@@ -183,7 +186,7 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
 
         total_pnl = df_closed['PNL_AccountCCY'].sum()
         equity_curve = [session_initial_balance] + (session_initial_balance + df_closed['PNL_AccountCCY'].cumsum()).tolist()
-        
+
         equity_series = pd.Series(equity_curve)
         rolling_max = equity_series.cummax()
         drawdown = equity_series - rolling_max
@@ -231,7 +234,7 @@ def initialize_mt5_interface(symbols_to_check):
     for symbol_name in symbols_to_check:
         symbol_info_obj = mt5.symbol_info(symbol_name)
         if symbol_info_obj is None: logger.warning(f"Symbol {symbol_name} not found in MT5. Skipping."); continue
-        
+
         if not symbol_info_obj.visible:
             logger.info(f"Symbol {symbol_name} not visible, attempting to select.")
             if not mt5.symbol_select(symbol_name, True): logger.warning(f"symbol_select({symbol_name}) failed. Skipping."); continue
@@ -241,7 +244,7 @@ def initialize_mt5_interface(symbols_to_check):
         if symbol_info_obj.point == 0 or symbol_info_obj.trade_tick_size == 0:
             logger.warning(f"Symbol {symbol_name} has invalid point/tick_size. Skipping.")
             continue
-        
+
         current_pip_value = 0.0001
         if 'JPY' in symbol_name.upper(): current_pip_value = 0.01
         elif any(sub in symbol_name.upper() for sub in ["XAU", "XAG", "XPT", "OIL", "BTC", "ETH"]): current_pip_value = 0.01
@@ -271,6 +274,13 @@ def shutdown_mt5_interface():
     logger.info("MetaTrader 5 Shutdown")
 
 # --- Live Bot Helper Functions ---
+
+def is_weekend_utc():
+    """Checks if the current UTC time is on a Saturday or Sunday."""
+    now_utc = datetime.now(timezone.utc)
+    # weekday() returns 0 for Monday and 6 for Sunday.
+    # So, 5 is Saturday and 6 is Sunday.
+    return now_utc.weekday() >= 5
 
 def is_within_session(symbol_sessions):
     if not symbol_sessions: return True
@@ -392,7 +402,7 @@ def place_pending_order(symbol, props, order_type, entry_price, sl_price, lot_si
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         logger.error(f"[{symbol}] Order Send FAILED. Retcode: {result.retcode}, Comment: {result.comment}")
         return None
-        
+
     logger.info(f"[{symbol}] PENDING ORDER PLACED. Ticket: {result.order}, Type: {order_type}, Price: {entry_price}, Lot: {lot_size}")
     return result.order
 
@@ -435,21 +445,21 @@ def manage_closed_positions():
 
     for pos_id in closed_position_ids:
         logger.info(f"Position {pos_id} detected as closed. Fetching history...")
-        
+
         # Give MT5 a moment to log the deal
         time.sleep(2)
         deals = mt5.history_deals_get(position=int(pos_id))
         if not deals:
             logger.warning(f"Could not find deals for closed position {pos_id}. Will retry.")
             continue
-            
+
         deals_df = pd.DataFrame(list(deals), columns=deals[0]._asdict().keys())
         entry_deal = deals_df[deals_df['entry'] == mt5.DEAL_ENTRY_IN].iloc[0]
         exit_deal = deals_df[deals_df['entry'] == mt5.DEAL_ENTRY_OUT].iloc[-1]
-        
+
         commission_cost = COMMISSIONS.get(exit_deal.symbol, 0.0)
         net_pnl = exit_deal.profit + exit_deal.commission + exit_deal.swap - commission_cost
-        
+
         update_values = {
             'CloseTimeUTC': pd.to_datetime(exit_deal.time, unit='s', utc=True).isoformat(),
             'ExitPrice': exit_deal.price,
@@ -469,13 +479,13 @@ def manage_open_positions():
 
     for position in open_positions:
         if position.magic != 202405: continue
-        
+
         pos_id_str = str(position.ticket)
         # First-time management for a newly opened position
         if pos_id_str not in logged_open_position_ids:
             risk_val_diff = abs(position.price_open - position.sl)
             tp_price = position.price_open + (4 * risk_val_diff) if position.type == mt5.ORDER_TYPE_BUY else position.price_open - (4 * risk_val_diff)
-            
+
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
             tp_price = round(tp_price, props['digits'])
 
@@ -508,10 +518,10 @@ def manage_open_positions():
         data = fetch_latest_data(position.symbol)
         if data is None: continue
         df, current_candle = data
-        
+
         atr_val = current_candle.get('ATR', np.nan)
         if pd.isna(atr_val) or atr_val <= 0: continue
-            
+
         move_from_entry = (current_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - current_candle['low'])
         atr_movement = move_from_entry / atr_val
 
@@ -541,7 +551,7 @@ def manage_pending_orders():
 
     for order in pending_orders:
         if order.magic != 202405: continue
-        
+
         data = fetch_latest_data(order.symbol)
         if data is None: continue
         _, current_candle = data
@@ -565,10 +575,10 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if setup['confirm_count'] < 2:
             new_queue.append(setup)
             continue
-        
+
         # Re-check conditions for confirmation
         data = fetch_latest_data(setup['symbol'])
-        if data is None: 
+        if data is None:
             new_queue.append(setup) # Keep in queue if data fails
             continue
         _, current_candle = data
@@ -577,7 +587,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
            (setup['bias'] == "SELL" and current_candle['close'] > current_candle['M5_EMA21']):
             logger.info(f"[{setup['symbol']}] Delayed {setup['bias']} setup invalidated on confirmation. Discarding.")
             continue # Discard invalid setup
-            
+
         if daily_risk_allocated + setup["risk_amt"] > max_daily_risk:
             logger.warning(f"[{setup['symbol']}] Delayed setup confirmed, but would exceed daily risk limit. Discarding.")
             continue
@@ -585,26 +595,32 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # Place the order
         props = ALL_SYMBOL_PROPERTIES[setup['symbol']]
         order_ticket = place_pending_order(setup['symbol'], props, f"{setup['bias']}_STOP", setup['entry_price'], setup['sl_price'], setup['lot_size'], "LiveBot_v1_Delayed")
-        
+
         if order_ticket:
             daily_risk_allocated += setup["risk_amt"]
             order_placed_this_cycle = True
             # Since an order is now pending, stop processing more setups from the queue
-            break 
+            break
         else:
             # If placing fails, keep it in the queue for another try
             new_queue.append(setup)
-            
+
     delayed_setups_queue = new_queue
 
     if order_placed_this_cycle: return daily_risk_allocated # Return updated risk
 
     # Look for new setups only if no order was placed this cycle
     for symbol in SYMBOLS_AVAILABLE_FOR_TRADE:
+        # --- Weekend Restriction Logic ---
+        if is_weekend_utc():
+            if symbol not in CRYPTO_SYMBOLS:
+                logger.info(f"[{symbol}] Skipped on weekend (non-crypto).")
+                continue
+
         # Check if we can trade this symbol now
         if not is_within_session(TRADING_SESSIONS_UTC.get(symbol, [])): continue
         if not is_outside_news_blackout(symbol, NEWS_TIMES_UTC): continue
-        
+
         data = fetch_latest_data(symbol)
         if data is None: continue
         df, current_candle = data
@@ -622,7 +638,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         m5_fanned_buy = current_candle['M5_EMA8'] > current_candle['M5_EMA13'] or current_candle['M5_EMA8'] > current_candle['M5_EMA21']
         m5_fanned_sell = current_candle['M5_EMA8'] < current_candle['M5_EMA13'] or current_candle['M5_EMA8'] < current_candle['M5_EMA21']
         if not ((h1_trend_bias == "BUY" and m5_fanned_buy) or (h1_trend_bias == "SELL" and m5_fanned_sell)): continue
-        
+
         # H4 Confirmation
         if not all(k in current_candle for k in ['H4_EMA8', 'H4_EMA21']) or pd.isna(current_candle[['H4_EMA8', 'H4_EMA21']]).any(): continue
         if (h1_trend_bias == "BUY" and current_candle['H4_EMA8'] < current_candle['H4_EMA21']) or \
@@ -651,7 +667,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         swing_high, swing_low = lookback_window['high'].max(), lookback_window['low'].min()
         impulse_start, impulse_end, price_for_pb = (swing_low, swing_high, current_candle['low']) if h1_trend_bias == "BUY" else (swing_high, swing_low, current_candle['high'])
         if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, h1_trend_bias) < 0.30: continue
-        
+
         # EMA-Fib Confluence
         fib_levels = calculate_fib_levels(swing_high, swing_low)
         tolerance = 0.5 * current_candle['ATR']
@@ -666,17 +682,17 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         else:
             entry_px = entry_lookback['low'].min() - pip_adj
             sl_px = entry_px + (1.5 * current_candle['ATR'])
-        
+
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
         if abs(entry_px - sl_px) <= 0: continue
-            
+
         # Risk Check
         lot_size = props['volume_min']
         est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value']
         if est_risk > mt5.account_info().balance * RISK_PER_TRADE_PERCENT:
             logger.info(f"[{symbol}] Setup found but min lot risk ({est_risk:.2f}) exceeds max allowed. Skipping.")
             continue
-            
+
         # Add to Delayed Queue
         delayed_setups_queue.append({
             "symbol": symbol, "bias": h1_trend_bias, "entry_price": entry_px, "sl_price": sl_px,
@@ -728,7 +744,7 @@ if __name__ == "__main__":
             # 4. Check for new signals if no positions are open/pending and daily limits allow
             open_positions = mt5.positions_get(magic=202405)
             pending_orders = mt5.orders_get(magic=202405)
-            
+
             if not open_positions and not pending_orders:
                 if consecutive_losses_count < 5:
                     if daily_risk_allocated_today < max_daily_risk_budget:

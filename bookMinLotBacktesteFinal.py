@@ -32,7 +32,7 @@ CSV_HEADERS = [
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",  "XAUUSD",
                        "USOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "XNGUSD"
 
                              ]
 
@@ -455,8 +455,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 6, 13)
-    end_datetime = datetime(2025, 6, 20)
+    start_datetime = datetime(2024, 10, 1)
+    end_datetime = datetime(2024, 10, 30)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -697,9 +697,7 @@ if __name__ == "__main__":
                                     symbol_conceptual_start_balances[order_symbol] = shared_account_balance
                                 global_pending_order = None
 
-            # =========================================================================
-            # ===== START OF REPLACEMENT BLOCK (WITH QUEUE PROCESSING & FIX) =====
-            # =========================================================================
+            
             if not global_active_trade and not global_pending_order:
                 
                 # --- Step 1: Process the delayed setups queue first ---
@@ -810,6 +808,9 @@ if __name__ == "__main__":
                         
                         symbol_df = prepared_symbol_data[sym_to_check_setup]
                         
+                        # =========================================================================
+                        # ===== START OF MODIFIED BLOCK WITH NEW FILTERS =====
+                        # =========================================================================
                         recent_candles_weakness = symbol_df.iloc[current_idx - 5 : current_idx - 1]
                         if len(recent_candles_weakness) < 4: continue
                         bullish_count = (recent_candles_weakness['close'] > recent_candles_weakness['open']).sum()
@@ -817,12 +818,52 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and bullish_count > 2) or \
                            (m5_setup_bias_setup == "SELL" and bearish_count > 2): continue
 
+                        # --- START OF NEW LOGIC ---
+                        # Get ATR value early as it's needed for the confluence filter's tolerance
                         atr_val = previous_candle.get('ATR', np.nan)
                         if pd.isna(atr_val) or atr_val <= 0: continue
+
+                        # Define the lookback window for the impulse leg (10 candles before the signal candle)
+                        if current_idx < 12: continue # Ensure we have enough data for the lookback
+                        lookback_window_for_swing = symbol_df.iloc[current_idx - 11 : current_idx - 1]
+                        if lookback_window_for_swing.empty: continue
+
+                        swing_high = lookback_window_for_swing['high'].max()
+                        swing_low = lookback_window_for_swing['low'].min()
+
+                        # 1. Pullback Depth Filter
+                        # Define impulse start/end based on bias
+                        impulse_start, impulse_end, price_for_pb = (swing_low, swing_high, previous_candle['low']) if m5_setup_bias_setup == "BUY" else (swing_high, swing_low, previous_candle['high'])
+                        
+                        # Check if pullback is at least 30%
+                        if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, m5_setup_bias_setup) < 0.30:
+                            continue
+
+                        # 2. EMA-Fibonacci Confluence Filter
+                        fib_levels = calculate_fib_levels(swing_high, swing_low)
+                        tolerance = 0.5 * atr_val # Use 50% of ATR as tolerance
+                        
+                        m5_ema8_val = previous_candle['M5_EMA8']
+                        m5_ema13_val = previous_candle['M5_EMA13']
+                        
+                        # Check if either EMA is close to any of the calculated Fib levels
+                        fib_confluence_found = False
+                        for fib_price in fib_levels.values():
+                            if abs(m5_ema8_val - fib_price) <= tolerance or abs(m5_ema13_val - fib_price) <= tolerance:
+                                fib_confluence_found = True
+                                break
+                        
+                        if not fib_confluence_found:
+                            continue
+                        # --- END OF NEW LOGIC ---
 
                         lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
                         
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
+                        # =========================================================================
+                        # ===== END OF MODIFIED BLOCK =====
+                        # =========================================================================
+                        
                         sl_distance_atr = 1.5 * atr_val
                         entry_px, sl_px = (0, 0)
                         
@@ -852,9 +893,6 @@ if __name__ == "__main__":
                         })
                         logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED. Bias: {m5_setup_bias_setup}, Entry: {entry_px}")
 
-            # =========================================================================
-            # ===== END OF REPLACEMENT BLOCK =====
-            # =========================================================================
 
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
 
