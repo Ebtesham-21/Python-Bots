@@ -32,7 +32,7 @@ CSV_HEADERS = [
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",  "XAUUSD",
                        "USOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "XNGUSD"
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"
 
                              ]
 
@@ -59,7 +59,7 @@ RISK_PER_TRADE_PERCENT = 0.01 # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
 
 # --- NEW: Simulation Parameters ---
-SPREAD_PIPS = 1.5  # Simulate a 1.5 pip spread
+SPREAD_PIPS = 0.2  # Simulate a 1.5 pip spread
 SLIPPAGE_PIPS = 0.5 # Simulate 0.5 pips of slippage on entry
 
 # --- NEW: Commission Structure ---
@@ -455,8 +455,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 10, 1)
-    end_datetime = datetime(2024, 10, 30)
+    start_datetime = datetime(2024, 1, 1)
+    end_datetime = datetime(2024, 7, 30)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -864,7 +864,7 @@ if __name__ == "__main__":
                         # ===== END OF MODIFIED BLOCK =====
                         # =========================================================================
                         
-                        sl_distance_atr = 1.5 * atr_val
+                        sl_distance_atr = 2.5 * atr_val
                         entry_px, sl_px = (0, 0)
                         
                         if m5_setup_bias_setup == "BUY":
