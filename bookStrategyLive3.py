@@ -30,19 +30,25 @@ session_start_balance = 0.0 # Will be set on initialization
 
 SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF", "GBPJPY", "GBPUSD",
 "AUDJPY",  "XAUUSD", "USOIL",
-"BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD"]
+"BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", 
+"AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", "USTEC",
+
+]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-"EURUSD": [(7, 14)], "GBPUSD": [(7, 14)], "AUDUSD": [ (7, 14)],
-"USDCHF": [(7, 14)], "USDCAD": [(12, 14)], "USDJPY": [ (12, 14)],
-"EURJPY": [ (7, 12)], "GBPJPY": [(7, 14)], "NZDUSD": [ (7, 14)],
-"EURCHF": [(7, 14)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 14)],
-"EURNZD": [ (7, 14)], "GBPNZD": [(7, 14)], "XAUUSD": [(7, 14)],
-"XAGUSD": [(7, 14)], "XPTUSD": [(7, 14)], "XAGGBP":[(7, 14)], "XAGEUR":[(7,14)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,14)]
+"EURUSD": [(7, 15)], "GBPUSD": [(7, 15)], "AUDUSD": [ (7, 15)],
+"USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [ (12, 15)],
+"EURJPY": [ (7, 12)], "GBPJPY": [(7, 15)], "NZDUSD": [ (7, 15)],
+"EURCHF": [(7, 15)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 15)],
+"EURNZD": [ (7, 15)], "GBPNZD": [(7, 15)], "XAUUSD": [(7, 15)],
+"XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
+ "XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
+    "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
+                       "USTEC": [(14, 17)],
 }
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 14)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 14)]
-CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 14)], "BTCJPY":[(0, 14)], "BTCXAU":[(7, 14)], "ETHUSD":[(7, 14)]}
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 15)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(7, 15)]
+CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 15)], "BTCJPY":[(0, 15)], "BTCXAU":[(7, 15)], "ETHUSD":[(7, 15)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
@@ -59,15 +65,17 @@ COMMISSIONS = {
 "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
 "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
 "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
+"AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
+"AMD":0.14, "NFLX":0.98 , "US500":0.03 , "USTEC":0.03,
 }
 
 # --- News Filter Times (User Input) ---
 
 NEWS_TIMES_UTC = {
-"USDCHF": ["14:00"],  "USDCAD": [], "NZDUSD": [],
-"ETHUSD": ["14:00"], "BTCUSD": ["14:00"], "EURUSD": ["14:00"],
-"AUDJPY": [], "GBPUSD": [ "14:00"], "USDJPY": [],
-"USOIL": ["14:00"], "XAUUSD":["14:00"], "GBPJPY":[], "BTCJPY":[]
+"USDCHF": ["12:30"], 
+"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"],
+"AUDJPY": [], "GBPUSD": [ "11:00", "12:30"], 
+"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":["11:00"], "BTCJPY":[]
 }
 
 # --- CSV File Recording Configuration ---
