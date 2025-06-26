@@ -112,3 +112,52 @@ Losing Trades,9
 Total PNL (Account CCY),4.25
 Max Drawdown (USD),5.64
 Max Drawdown (%),2.76%
+
+--- Performance Summary ---,Generated: 2025-06-25T09:10:50.173913+00:00 ---
+Metric,Value
+Total Closed Trades,14
+Winning Trades,5
+Losing Trades,9
+Total PNL (Account CCY),4.25
+Max Drawdown (USD),5.64
+Max Drawdown (%),2.78%
+775695350,775695350,GBPJPY,BUY,2025-06-25T09:30:47+00:00,198.173,0.01,197.945,199.085,2025-06-25T12:27:54+00:00,198.233,0.26,LiveBot_v1_Delay,Closed by broker: [sl 198.23300],1.57
+776919406,776919406,GBPJPY,BUY,2025-06-25T14:15:49+00:00,198.372,0.01,198.175,199.16,2025-06-25T15:34:34+00:00,198.302,-0.63,LiveBot_v1_Delay,Closed by broker: [sl 198.30200],1.35
+
+--- Performance Summary ---,Generated: 2025-06-25T17:09:58.694187+00:00 ---
+Metric,Value
+Total Closed Trades,16
+Winning Trades,6
+Losing Trades,10
+Total PNL (Account CCY),3.88
+Max Drawdown (USD),6.01
+Max Drawdown (%),2.97%
+
+--- Performance Summary ---,Generated: 2025-06-26T01:14:31.422441+00:00 ---
+Metric,Value
+Total Closed Trades,16
+Winning Trades,6
+Losing Trades,10
+Total PNL (Account CCY),3.88
+Max Drawdown (USD),6.01
+Max Drawdown (%),2.97%
+778616519,778616519,AUDJPY,BUY,2025-06-26T03:20:29+00:00,94.539,0.01,94.421,95.011,2025-06-26T04:15:52+00:00,94.528,-0.17,LiveBot_v1_Delay,Closed by broker: [sl 94.52800],0.82
+779427002,779427002,GBPUSD,BUY,2025-06-26T07:52:52+00:00,1.37397,0.01,1.37231,1.38061,2025-06-26T09:00:25+00:00,1.37492,0.86,LiveBot_v1_Delay,Closed by broker: [sl 1.37492],1.66
+
+--- Performance Summary ---,Generated: 2025-06-26T15:01:23.388482+00:00 ---
+Metric,Value
+Total Closed Trades,18
+Winning Trades,7
+Losing Trades,11
+Total PNL (Account CCY),4.57
+Max Drawdown (USD),6.18
+Max Drawdown (%),3.06%
+
+--- Performance Summary ---,Generated: 2025-06-26T15:23:35.062111+00:00 ---
+Metric,Value
+Total Closed Trades,18
+Winning Trades,7
+Losing Trades,11
+Total PNL (Account CCY),4.57
+Max Drawdown (USD),6.18
+Max Drawdown (%),3.05%
