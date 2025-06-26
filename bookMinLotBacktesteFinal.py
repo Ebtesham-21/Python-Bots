@@ -30,8 +30,8 @@ CSV_HEADERS = [
 
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
-                           "AUDJPY",  "XAUUSD",
-                       "USOIL",
+                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD",
+                       "USOIL", "UKOIL",
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
                        "USTEC"
 
@@ -461,8 +461,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1)
-    end_datetime = datetime(2025, 5, 30)
+    start_datetime = datetime(2024, 1, 1)
+    end_datetime = datetime(2024, 7, 30)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()

@@ -29,7 +29,7 @@ session_start_balance = 0.0 # Will be set on initialization
 # --- Strategy & Risk Parameters ---
 
 SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF", "GBPJPY", "GBPUSD",
-"AUDJPY",  "XAUUSD", "USOIL",
+"AUDJPY",  "XAUUSD", "USOIL", "UKOIL",
 "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", 
 "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", "USTEC",
 
