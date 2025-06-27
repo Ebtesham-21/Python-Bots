@@ -28,12 +28,13 @@ session_start_balance = 0.0 # Will be set on initialization
 
 # --- Strategy & Risk Parameters ---
 
-SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
-                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY",
-                       "USOIL", "UKOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
-                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
-
+SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
+                    "AUDJPY", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF",
+                    "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
+                    "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",
+                    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", "USTEC", "INTC", "MO", 
+                    "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",                                            
+        
                              ]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
@@ -63,21 +64,23 @@ DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of 
 # --- Commission Structure ---
 
 COMMISSIONS = {
-    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11, 
-    "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,"NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, 
-    "USOIL": 0.16, "UKOIL": 0.65, "XAUUSD":0.11,
-    "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,"ETHUSD": 0.30, 
+    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11, "EURCHF":0.17,
+    "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
+    "UKOIL": 0.65, "XAUUSD":0.11,"XAGUSD":1.05, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
+    "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
     "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
-    "AMD":0.14, "NFLX":0.98 , "US500":0.03 , "USTEC":0.03,
+    "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
+                       "USTEC":0.03,
 }
 
 # --- News Filter Times (User Input) ---
 
 NEWS_TIMES_UTC = {
-"USDCHF": ["12:30"], "NZDUSD":["12:30"],
-"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"], "USDCAD":["12:30"],
-"AUDJPY": [], "GBPUSD": [ "12:30"], "UKOIL":[],
-"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":[], "BTCJPY":[]
+"EURUSD":["12:30"], "USDCHF":["12:30"],   "GBPJPY":[], "GBPUSD":["12:30"], 
+"AUDJPY":[],"EURNZD":[], "NZDUSD":["12:30"], "AUDUSD":["12:30"], "USDCAD":["12:30"],"USDJPY":["12:30"], "EURJPY":[],"EURCHF":[],
+"USOIL":["12:30"], "UKOIL":[],"XAUUSD":["12:30"], "XAGUSD":["12:30"],
+"BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],
+
 }
 
 # --- CSV File Recording Configuration ---
