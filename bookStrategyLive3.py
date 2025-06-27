@@ -28,23 +28,25 @@ session_start_balance = 0.0 # Will be set on initialization
 
 # --- Strategy & Risk Parameters ---
 
-SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF", "GBPJPY", "GBPUSD",
-"AUDJPY",  "XAUUSD", "USOIL", "UKOIL",
-"BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", 
-"AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", "USTEC",
+SYMBOLS_TO_TRADE = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
+                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY",
+                       "USOIL", "UKOIL",
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
+                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
 
-]
+                             ]
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-"EURUSD": [(7, 15)], "GBPUSD": [(7, 15)], "AUDUSD": [ (7, 15)],
-"USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [ (12, 15)],
-"EURJPY": [ (7, 12)], "GBPJPY": [(7, 15)], "NZDUSD": [ (7, 15)],
-"EURCHF": [(7, 15)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 15)],
-"EURNZD": [ (7, 15)], "GBPNZD": [(7, 15)], "XAUUSD": [(7, 15)],
-"XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
- "XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
+    "EURUSD": [(7, 15)], "GBPUSD": [(7, 15)], "AUDUSD": [ (7, 15)],
+    "USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [(0,4), (12, 15)],
+    "EURJPY": [ (0,4) , (7, 12)], "GBPJPY": [ (7, 15)], "NZDUSD": [ (7, 15)],
+    "EURCHF": [(7, 15)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 15)],
+    "EURNZD": [ (7, 15)], "GBPNZD": [(7, 15)], "XAUUSD": [(7, 15)],
+    "XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
     "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
-                       "USTEC": [(14, 17)],
+                       "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+
+
 }
 TRADING_SESSIONS_UTC["USOIL"] = [(12, 15)]
 TRADING_SESSIONS_UTC["UKOIL"] = [(7, 15)]
@@ -61,21 +63,21 @@ DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of 
 # --- Commission Structure ---
 
 COMMISSIONS = {
-"EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10,
-"NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
-"UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
-"ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
-"AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
-"AMD":0.14, "NFLX":0.98 , "US500":0.03 , "USTEC":0.03,
+    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11, 
+    "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,"NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, 
+    "USOIL": 0.16, "UKOIL": 0.65, "XAUUSD":0.11,
+    "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,"ETHUSD": 0.30, 
+    "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
+    "AMD":0.14, "NFLX":0.98 , "US500":0.03 , "USTEC":0.03,
 }
 
 # --- News Filter Times (User Input) ---
 
 NEWS_TIMES_UTC = {
-"USDCHF": ["12:30"], 
-"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"],
-"AUDJPY": [], "GBPUSD": [ "11:00", "12:30"], 
-"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":["11:00"], "BTCJPY":[]
+"USDCHF": ["12:30"], "NZDUSD":["12:30"],
+"ETHUSD": ["12:30"], "BTCUSD": ["12:30"], "EURUSD": ["12:30"], "USDCAD":["12:30"],
+"AUDJPY": [], "GBPUSD": [ "12:30"], "UKOIL":[],
+"USOIL": ["12:30"], "XAUUSD":["12:30"], "GBPJPY":[], "BTCJPY":[]
 }
 
 # --- CSV File Recording Configuration ---

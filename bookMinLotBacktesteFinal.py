@@ -30,10 +30,10 @@ CSV_HEADERS = [
 
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
-                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD",
+                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY",
                        "USOIL", "UKOIL",
-                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD", "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
-                       "USTEC"
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
+                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
 
                              ]
 
@@ -42,13 +42,14 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
     "EURUSD": [(7, 15)], "GBPUSD": [(7, 15)], "AUDUSD": [ (7, 15)],
-    "USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [ (12, 15)],
+    "USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [(0,4), (12, 15)],
     "EURJPY": [ (0,4) , (7, 12)], "GBPJPY": [ (7, 15)], "NZDUSD": [ (7, 15)],
     "EURCHF": [(7, 15)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 15)],
     "EURNZD": [ (7, 15)], "GBPNZD": [(7, 15)], "XAUUSD": [(7, 15)],
     "XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
     "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
-                       "USTEC": [(14, 17)],
+                       "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+
 
 }
 TRADING_SESSIONS_UTC["USOIL"] = [(12, 15)]
@@ -70,7 +71,7 @@ SLIPPAGE_PIPS = 0.5 # Simulate 0.5 pips of slippage on entry
 # This dictionary holds the commission cost per trade for the minimum lot size.
 # The bot currently only trades the minimum lot, so this value is applied directly.
 COMMISSIONS = {
-    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10,
+    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11,
     "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
     "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
     "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
@@ -461,8 +462,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 1, 1)
-    end_datetime = datetime(2024, 7, 30)
+    start_datetime = datetime(2024, 8, 1)
+    end_datetime = datetime(2025, 6, 25)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
