@@ -161,4 +161,14 @@ Losing Trades,11
 Total PNL (Account CCY),4.57
 Max Drawdown (USD),6.18
 Max Drawdown (%),3.05%
-781461122,781461122,US500,BUY,2025-06-26T16:01:34+00:00,6138.67,0.03,6129.55,6175.15,,,,LiveBot_v1_Delay,,0.27
+781461122,781461122,US500,BUY,2025-06-26T16:01:34+00:00,6138.67,0.03,6129.55,6175.15,2025-06-26T17:38:42+00:00,6143.47,0.11,LiveBot_v1_Delay,Closed by broker: LiveBot_v1_Delay,0.27
+
+--- Performance Summary ---,Generated: 2025-06-26T17:38:54.137224+00:00 ---
+Metric,Value
+Total Closed Trades,18
+Winning Trades,7
+Losing Trades,11
+Total PNL (Account CCY),4.57
+Max Drawdown (USD),6.18
+Max Drawdown (%),3.05%
+782827361,782827361,AUDJPY,BUY,2025-06-27T03:38:09+00:00,94.608,0.01,94.5,95.04,2025-06-27T05:35:27+00:00,94.5,-0.84,LiveBot_v1_Delay,Closed by broker: [sl 94.50000],0.75
