@@ -30,8 +30,8 @@ CSV_HEADERS = [
 
 # --- Strategy & Backtest Parameters ---
 SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
-                           "AUDJPY",  "XAUUSD", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY",
-                       "USOIL", "UKOIL",
+                           "AUDJPY",  "XAUUSD", "XAGUSD", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF",
+                       "USOIL", "UKOIL", 
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
                        "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
 
@@ -71,11 +71,11 @@ SLIPPAGE_PIPS = 0.5 # Simulate 0.5 pips of slippage on entry
 # This dictionary holds the commission cost per trade for the minimum lot size.
 # The bot currently only trades the minimum lot, so this value is applied directly.
 COMMISSIONS = {
-    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11,
+    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11, "EURCHF":0.17,
     "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
-    "UKOIL": 0.65, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
+    "UKOIL": 0.65, "XAUUSD":0.11,"XAGUSD":1.05, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
     "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
-    "XAUUSD":0.11, "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
+    "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
     "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
                        "USTEC":0.03,
 }
@@ -462,8 +462,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2024, 8, 1)
-    end_datetime = datetime(2025, 6, 25)
+    start_datetime = datetime(2024, 1, 1)
+    end_datetime = datetime(2024, 7, 30)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
