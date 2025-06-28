@@ -172,3 +172,42 @@ Total PNL (Account CCY),4.57
 Max Drawdown (USD),6.18
 Max Drawdown (%),3.05%
 782827361,782827361,AUDJPY,BUY,2025-06-27T03:38:09+00:00,94.608,0.01,94.5,95.04,2025-06-27T05:35:27+00:00,94.5,-0.84,LiveBot_v1_Delay,Closed by broker: [sl 94.50000],0.75
+784014030,784014030,USDCHF,SELL,2025-06-27T09:21:59+00:00,0.79819,0.01,0.79921,0.79411,2025-06-27T09:43:25+00:00,0.79827,-0.20,LiveBot_v1_Delay,Closed by broker: LiveBot_v1_Delay,1.27
+785727134,785727134,MSFT,BUY,2025-06-27T14:46:18+00:00,497.23,0.01,496.57,499.87,2025-06-27T14:52:01+00:00,496.55,-0.85,LiveBot_v1_Delay,Closed by broker: [sl 496.55000],0.66
+785902430,785902430,US500,BUY,2025-06-27T15:31:44+00:00,6182.91,0.03,6172.01,6226.51,2025-06-27T16:46:33+00:00,6187.77,0.12,LiveBot_v1_Delay,Closed by broker: [sl 6187.77000],0.33
+
+--- Performance Summary ---,Generated: 2025-06-27T16:51:19.912758+00:00 ---
+Metric,Value
+Total Closed Trades,23
+Winning Trades,9
+Losing Trades,14
+Total PNL (Account CCY),2.91
+Max Drawdown (USD),7.10
+Max Drawdown (%),3.50%
+
+--- Performance Summary ---,Generated: 2025-06-28T01:05:53.836781+00:00 ---
+Metric,Value
+Total Closed Trades,23
+Winning Trades,9
+Losing Trades,14
+Total PNL (Account CCY),2.91
+Max Drawdown (USD),7.10
+Max Drawdown (%),3.53%
+
+--- Performance Summary ---,Generated: 2025-06-28T01:26:35.500890+00:00 ---
+Metric,Value
+Total Closed Trades,23
+Winning Trades,9
+Losing Trades,14
+Total PNL (Account CCY),2.91
+Max Drawdown (USD),7.10
+Max Drawdown (%),3.53%
+
+--- Performance Summary ---,Generated: 2025-06-28T01:27:26.989100+00:00 ---
+Metric,Value
+Total Closed Trades,23
+Winning Trades,9
+Losing Trades,14
+Total PNL (Account CCY),2.91
+Max Drawdown (USD),7.10
+Max Drawdown (%),3.53%
