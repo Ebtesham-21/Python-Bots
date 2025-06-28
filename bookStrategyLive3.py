@@ -28,30 +28,27 @@ session_start_balance = 0.0 # Will be set on initialization
 
 # --- Strategy & Risk Parameters ---
 
-SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
-                    "AUDJPY", "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF",
-                    "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
-                    "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD",
-                    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", "USTEC", "INTC", "MO", 
-                    "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",                                            
-        
+SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD", 
+                           "AUDJPY",   "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF", "CADCHF", "CADJPY", "EURCAD",
+                           "GBPCAD", "NZDCAD", "GBPAUD", "GBPNZD", "GBPCHF", "AUDCAD", "AUDCHF", "AUDNZD", "EURAUD", 
+                       "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
+                       "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
+                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
+
                              ]
-
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-    "EURUSD": [(7, 15)], "GBPUSD": [(7, 15)], "AUDUSD": [ (7, 15)],
-    "USDCHF": [(7, 15)], "USDCAD": [(12, 15)], "USDJPY": [(0,4), (12, 15)],
-    "EURJPY": [ (0,4) , (7, 12)], "GBPJPY": [ (7, 15)], "NZDUSD": [ (7, 15)],
-    "EURCHF": [(7, 15)], "AUDJPY": [(0, 4)], "CADJPY": [(12, 15)],
-    "EURNZD": [ (7, 15)], "GBPNZD": [(7, 15)], "XAUUSD": [(7, 15)],
-    "XAGUSD": [(7, 15)], "XPTUSD": [(7, 15)], "XAGGBP":[(7, 15)], "XAGEUR":[(7,15)], "XAGAUD": [(0,4), (7,10)], "BTCXAG":[(7,15)],
-    "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
-                       "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+                           "EURUSD":[(7, 16)], "USDCHF":[(7, 16)],   "GBPJPY": [ (7, 16)], "GBPUSD": [ (7, 16)], 
+                           "AUDJPY":[(0, 4)],  "XAUUSD": [(7, 16)], "XAGUSD": [(7, 16)], "EURNZD": [(7, 16)], "NZDUSD": [(7, 16)], "AUDUSD": [ (7, 16)], "USDCAD": [(12, 16)],"USDJPY":[(0,4), (12, 16)], "EURJPY": [ (0,4) , (7, 16)],"EURCHF": [(7, 16)], "CADCHF": [  (7, 16)], "CADJPY": [ (0,4) , (12, 16)], "EURCAD":[(7, 16)],
+                           "GBPCAD": [(7, 16)], "NZDCAD":[(12,16)], "GBPAUD":[(0,4), (7, 16)], "GBPNZD":[(7,16)], "GBPCHF":[(7,16)], "AUDCAD":[(0,4) , (12,16)], "AUDCHF":[(0,4) , (7,16)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,16)], 
 
+                           "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
+                           "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+                          
+                          }
 
-}
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 15)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 15)]
-CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 15)], "BTCJPY":[(0, 15)], "BTCXAU":[(7, 15)], "ETHUSD":[(7, 15)]}
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(7, 16)]
+CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 16)], "BTCJPY":[(0, 16)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
@@ -63,15 +60,20 @@ DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of 
 
 # --- Commission Structure ---
 
+
 COMMISSIONS = {
-    "EURUSD": 0.07, "AUDUSD": 0.10, "USDCHF": 0.10, "USDCAD": 0.10, "USDJPY":0.07, "EURJPY":0.11, "EURCHF":0.17,
-    "NZDUSD": 0.13, "AUDJPY": 0.09, "EURNZD": 0.18, "USOIL": 0.16,
-    "UKOIL": 0.65, "XAUUSD":0.11,"XAGUSD":1.05, "BTCUSD": 0.16, "BTCJPY": 0.21, "BTCXAU": 0.20,
-    "ETHUSD": 0.30, "GBPUSD": 0.09, "USDJPY": 0.07, "GBPJPY": 0.15,
-    "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
-    "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
-                       "USTEC":0.03,
-}
+
+    "EURUSD":0.07, "USDCHF":0.10,   "GBPJPY":0.15, "GBPUSD":0.09, 
+                           "AUDJPY":0.09,   "EURNZD":0.18, "NZDUSD":0.13, "AUDUSD":0.10, "USDCAD":0.10,"USDJPY":0.07, "EURJPY":0.11,"EURCHF":0.17, "CADCHF":0.09, "CADJPY":0.15, "EURCAD":0.13,
+                           "GBPCAD":0.20, "NZDCAD":0.10, "GBPAUD":0.13, "GBPNZD":0.19, "GBPCHF":0.17, "AUDCAD":0.10, "AUDCHF":0.09, "AUDNZD":0.08, "EURAUD":0.13, 
+                       "USOIL":0.16, "UKOIL":0.65, "XAUUSD":0.11, "XAGUSD":1.05,
+                       "BTCUSD":0.16, "BTCJPY":0.21, "BTCXAU":0.20, "ETHUSD":0.30,"AAPL":0.05, "MSFT":0.17, 
+                        "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
+                        "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
+                        "USTEC":0.03,
+                        # "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
+
+                            }
 
 # --- News Filter Times (User Input) ---
 
@@ -111,9 +113,22 @@ def load_state_from_csv():
         return
 
     try:
-        df = pd.read_csv(TRADE_HISTORY_FILE, dtype={'PositionID': str})
+        # Filter out summary lines during the read operation
+        with open(TRADE_HISTORY_FILE, 'r') as f:
+            lines = [line for line in f if not line.strip().startswith('---')]
+        
+        # If after filtering we only have the header or less, treat as empty
+        if len(lines) <= 1:
+             logger.info(f"{TRADE_HISTORY_FILE} contains no trade data. Starting with empty state.")
+             return
+
+        # Use the filtered lines to create the DataFrame
+        from io import StringIO
+        df = pd.read_csv(StringIO(''.join(lines)), dtype={'PositionID': str})
+        
         df = df[df['PositionID'].str.isdigit().fillna(False)]
         open_trades_df = df[df['CloseTimeUTC'].isnull() | (df['CloseTimeUTC'] == '')]
+        
         for _, row in open_trades_df.iterrows():
             pos_id = str(row['PositionID'])
             logged_open_position_ids.add(pos_id)
@@ -124,7 +139,7 @@ def load_state_from_csv():
             }
         logger.info(f"Loaded {len(logged_open_position_ids)} open positions' IDs from {TRADE_HISTORY_FILE}")
     except pd.errors.EmptyDataError:
-        logger.info(f"{TRADE_HISTORY_FILE} is empty. Starting with empty state.")
+        logger.info(f"{TRADE_HISTORY_FILE} is empty or contains no valid trades. Starting with empty state.")
     except Exception as e:
         logger.error(f"Error loading state from CSV {TRADE_HISTORY_FILE}: {e}")
 
@@ -148,7 +163,10 @@ def update_closed_trade_in_csv(position_id_to_update, update_values_dict):
             header = next(reader)
             lines.append(header)
             for row in reader:
-                if row and len(row) == len(CSV_HEADERS):
+                # Skip summary lines and empty rows
+                if not row or row[0].startswith('---'):
+                    continue
+                if len(row) == len(CSV_HEADERS):
                     if row[CSV_HEADERS.index('PositionID')] == position_id_to_update_str and \
                        (not row[CSV_HEADERS.index('CloseTimeUTC')] or row[CSV_HEADERS.index('CloseTimeUTC')] == ''):
                         for key, value in update_values_dict.items():
@@ -173,11 +191,21 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
         logger.warning(f"Trade history file {csv_filepath} not found. Cannot calculate performance summary.")
         return
     try:
-        df_all = pd.read_csv(csv_filepath, dtype={'PositionID': str, 'PNL_AccountCCY': str})
+        # Pre-filter lines to remove summaries before loading into pandas
+        with open(csv_filepath, 'r') as f:
+            lines = [line for line in f if not line.strip().startswith('---')]
+        if len(lines) <= 1:
+            logger.info("No trade data found in history file to summarize.")
+            return
+
+        from io import StringIO
+        df_all = pd.read_csv(StringIO(''.join(lines)), dtype={'PositionID': str, 'PNL_AccountCCY': str})
+        
         df_trades_only = df_all[df_all['PositionID'].str.isdigit().fillna(False)].copy()
         if df_trades_only.empty:
             logger.info("No trades found in history file to summarize.")
             return
+            
         df_trades_only['PNL_AccountCCY'] = pd.to_numeric(df_trades_only['PNL_AccountCCY'], errors='coerce')
         df_closed = df_trades_only[df_trades_only['PNL_AccountCCY'].notna()].copy()
         if df_closed.empty:
@@ -194,9 +222,14 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
         rolling_max = equity_series.cummax()
         drawdown = equity_series - rolling_max
         max_drawdown_usd = abs(drawdown.min())
-        mdd_end_idx = drawdown.idxmin()
-        peak_at_mdd_start = rolling_max[mdd_end_idx]
-        max_drawdown_percent = (max_drawdown_usd / peak_at_mdd_start) * 100 if peak_at_mdd_start > 0 else 0.0
+        
+        # Ensure there is a drawdown to find an index for
+        if not drawdown.empty and max_drawdown_usd > 0:
+            mdd_end_idx = drawdown.idxmin()
+            peak_at_mdd_start = rolling_max[mdd_end_idx]
+            max_drawdown_percent = (max_drawdown_usd / peak_at_mdd_start) * 100 if peak_at_mdd_start > 0 else 0.0
+        else:
+            max_drawdown_percent = 0.0
 
         summary_data = [
             ["Total Closed Trades", len(df_closed)],
@@ -440,36 +473,68 @@ def cancel_pending_order(order_ticket):
 def manage_closed_positions():
     live_position_ids = {str(p.ticket) for p in mt5.positions_get() if p.magic == 202405}
     closed_position_ids = logged_open_position_ids - live_position_ids
+    
     for pos_id in closed_position_ids:
         logger.info(f"Position {pos_id} detected as closed. Fetching history...")
-        time.sleep(2)
-        deals = mt5.history_deals_get(position=int(pos_id))
+        
+        # --- FIX: Retry mechanism for fetching deal history ---
+        deals = None
+        max_retries = 5
+        retry_delay_seconds = 3 # Increased delay
+        
+        for attempt in range(max_retries):
+            deals = mt5.history_deals_get(position=int(pos_id))
+            if deals and len(deals) > 0:
+                logger.info(f"Successfully fetched deals for position {pos_id} on attempt {attempt + 1}.")
+                break # Exit the loop if deals are found
+            
+            logger.warning(f"Could not find deals for closed position {pos_id} on attempt {attempt + 1}/{max_retries}. Retrying in {retry_delay_seconds}s...")
+            time.sleep(retry_delay_seconds)
+        # --- END FIX ---
+
         if not deals:
-            logger.warning(f"Could not find deals for closed position {pos_id}. Will retry on next cycle.")
-            continue
+            logger.error(f"CRITICAL: Failed to fetch deals for closed position {pos_id} after {max_retries} attempts. Skipping update for this cycle.")
+            continue # Move to the next closed position
+
         deals_df = pd.DataFrame(list(deals), columns=deals[0]._asdict().keys())
         entry_deals_df = deals_df[deals_df['entry'] == mt5.DEAL_ENTRY_IN]
         exit_deals_df = deals_df[deals_df['entry'] == mt5.DEAL_ENTRY_OUT]
+        
         if exit_deals_df.empty:
-            logger.warning(f"Position {pos_id} is closed, but no 'OUT' deal found in history yet. Retrying next cycle.")
+            logger.warning(f"Position {pos_id} is closed, but no 'OUT' deal found in history yet. This might be a partial close. Retrying next cycle.")
             continue
         if entry_deals_df.empty:
             logger.error(f"CRITICAL: Position {pos_id} has an exit deal but no entry deal. Skipping update.")
             if pos_id in logged_open_position_ids: logged_open_position_ids.remove(pos_id)
             if pos_id in trade_details_for_closure: del trade_details_for_closure[pos_id]
             continue
+            
         entry_deal = entry_deals_df.iloc[0]
-        exit_deal = exit_deals_df.iloc[-1]
-        commission_cost = COMMISSIONS.get(exit_deal.symbol, 0.0)
-        net_pnl = exit_deal.profit + exit_deal.commission + exit_deal.swap - commission_cost
+        # Sum up profit/commission/swap from all exit deals in case of partial closures
+        total_profit = exit_deals_df['profit'].sum()
+        total_commission = exit_deals_df['commission'].sum()
+        total_swap = exit_deals_df['swap'].sum()
+        
+        # Use the last exit deal for time and price
+        last_exit_deal = exit_deals_df.iloc[-1]
+        
+        commission_cost = COMMISSIONS.get(last_exit_deal.symbol, 0.0) # This might need adjustment if it's per lot
+        net_pnl = total_profit + total_commission + total_swap - commission_cost
+        
         update_values = {
-            'CloseTimeUTC': pd.to_datetime(exit_deal.time, unit='s', utc=True).isoformat(),
-            'ExitPrice': exit_deal.price, 'PNL_AccountCCY': f"{net_pnl:.2f}",
-            'CloseReason': f"Closed by broker: {exit_deal.comment}"}
+            'CloseTimeUTC': pd.to_datetime(last_exit_deal.time, unit='s', utc=True).isoformat(),
+            'ExitPrice': last_exit_deal.price, 
+            'PNL_AccountCCY': f"{net_pnl:.2f}",
+            'CloseReason': f"Closed by broker: {last_exit_deal.comment}"
+        }
+        
         update_closed_trade_in_csv(pos_id, update_values)
+        
+        # Clean up state
         logged_open_position_ids.remove(pos_id)
         if pos_id in trade_details_for_closure:
             del trade_details_for_closure[pos_id]
+
 
 def manage_open_positions():
     open_positions = mt5.positions_get(magic=202405)
@@ -482,7 +547,11 @@ def manage_open_positions():
             tp_price = position.price_open + (4 * risk_val_diff) if position.type == mt5.ORDER_TYPE_BUY else position.price_open - (4 * risk_val_diff)
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
             tp_price = round(tp_price, props['digits'])
-            modify_position_sltp(position, position.sl, tp_price)
+            
+            # Check if TP needs to be set/modified
+            if abs(position.tp - tp_price) > props['trade_tick_size']:
+                 modify_position_sltp(position, position.sl, tp_price)
+            
             risk_amount = (risk_val_diff / props['trade_tick_size']) * props['trade_tick_value'] * position.volume if props['trade_tick_size'] > 0 else 0
             trade_data = {
                 "TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol,
@@ -514,6 +583,10 @@ def manage_open_positions():
 
         if atr_movement >= details['ts_next_atr_level']:
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
+            
+            # Ensure we have enough data to look back
+            if len(df) < 5: continue
+            
             last_3_closed = df.iloc[-4:-1] # 3 closed candles before the last one
             new_sl = 0
 
@@ -604,9 +677,11 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
         if not ((h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8'])): continue
 
+        if len(df) < 7: continue # Ensure enough candles for lookback
         recent_candles = df.iloc[-6:-2]; bullish_count = (recent_candles['close'] > recent_candles['open']).sum(); bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
         if (h1_trend_bias == "BUY" and bullish_count > 2) or (h1_trend_bias == "SELL" and bearish_count > 2): continue
 
+        if len(df) < 13: continue # Ensure enough candles for swing lookback
         lookback_window = df.iloc[-12:-2]; swing_high, swing_low = lookback_window['high'].max(), lookback_window['low'].min()
         impulse_start, impulse_end, price_for_pb = (swing_low, swing_high, last_closed_candle['low']) if h1_trend_bias == "BUY" else (swing_high, swing_low, last_closed_candle['high'])
         if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, h1_trend_bias) < 0.30: continue
@@ -614,6 +689,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         fib_levels = calculate_fib_levels(swing_high, swing_low); tolerance = 0.5 * last_closed_candle['ATR']
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
 
+        if len(df) < 5: continue # Ensure enough candles for entry lookback
         entry_lookback = df.iloc[-4:-1]; entry_px, sl_px = (0,0)
         if h1_trend_bias == "BUY":
             entry_px = entry_lookback['high'].max() + pip_adj
@@ -624,8 +700,16 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
         if abs(entry_px - sl_px) <= 0: continue
 
-        lot_size = props['volume_min']; est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value']
-        if est_risk > mt5.account_info().balance * RISK_PER_TRADE_PERCENT:
+        lot_size = props['volume_min']
+        
+        # Check if balance info is available before calculating risk
+        account_info = mt5.account_info()
+        if account_info is None:
+            logger.warning(f"Could not get account info to check risk for {symbol}. Skipping signal.")
+            continue
+
+        est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value']
+        if est_risk > account_info.balance * RISK_PER_TRADE_PERCENT:
             logger.info(f"[{symbol}] Setup found but min lot risk ({est_risk:.2f}) exceeds max allowed. Skipping.")
             continue
 
@@ -646,7 +730,15 @@ if __name__ == "__main__":
 
     current_day = datetime.now(timezone.utc).date()
     daily_risk_allocated_today = 0.0
-    max_daily_risk_budget = mt5.account_info().balance * DAILY_RISK_LIMIT_PERCENT
+    
+    # Initialize daily risk budget
+    account_info = mt5.account_info()
+    if account_info:
+        max_daily_risk_budget = account_info.balance * DAILY_RISK_LIMIT_PERCENT
+    else:
+        logger.error("Could not get initial account info. Daily risk budget set to 0.")
+        max_daily_risk_budget = 0.0
+
     consecutive_losses_count = 0
 
     # --- NEW: State variable for candle-based execution ---
@@ -676,8 +768,13 @@ if __name__ == "__main__":
                 if datetime.now(timezone.utc).date() != current_day:
                     current_day = datetime.now(timezone.utc).date()
                     daily_risk_allocated_today, consecutive_losses_count = 0.0, 0
-                    max_daily_risk_budget = mt5.account_info().balance * DAILY_RISK_LIMIT_PERCENT
-                    logger.info(f"NEW DAY: {current_day}. Daily risk budget reset to {max_daily_risk_budget:.2f} USD.")
+                    
+                    account_info = mt5.account_info()
+                    if account_info:
+                        max_daily_risk_budget = account_info.balance * DAILY_RISK_LIMIT_PERCENT
+                        logger.info(f"NEW DAY: {current_day}. Daily risk budget reset to {max_daily_risk_budget:.2f} USD.")
+                    else:
+                        logger.error("Could not get account info for new day. Daily risk budget not updated.")
 
                 manage_closed_positions()
                 manage_open_positions()
@@ -687,6 +784,12 @@ if __name__ == "__main__":
                 pending_orders = mt5.orders_get(magic=202405)
 
                 if not open_positions and not pending_orders:
+                    # Reset daily risk allocation if there are no open trades or pending orders from our bot
+                    # This is a safety measure in case risk was allocated but an order failed to place
+                    if daily_risk_allocated_today > 0 and not delayed_setups_queue:
+                         logger.info("No active trades, pending orders, or queued setups. Resetting daily risk allocated.")
+                         daily_risk_allocated_today = 0.0
+
                     if consecutive_losses_count < 5:
                         if daily_risk_allocated_today < max_daily_risk_budget:
                             logger.debug("No active/pending trades. Scanning for new setups...")
