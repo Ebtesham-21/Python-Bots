@@ -81,7 +81,7 @@ COMMISSIONS = {
                            "AUDJPY":0.09,   "EURNZD":0.18, "NZDUSD":0.13, "AUDUSD":0.10, "USDCAD":0.10,"USDJPY":0.07, "EURJPY":0.11,"EURCHF":0.17, "CADCHF":0.09, "CADJPY":0.15, "EURCAD":0.13,
                            "GBPCAD":0.20, "NZDCAD":0.10, "GBPAUD":0.13, "GBPNZD":0.19, "GBPCHF":0.17, "AUDCAD":0.10, "AUDCHF":0.09, "AUDNZD":0.08, "EURAUD":0.13, 
                        "USOIL":0.16, "UKOIL":0.65, "XAUUSD":0.11, "XAGUSD":1.05,
-                       "BTCUSD":0.16, "BTCJPY":0.21, "BTCXAU":0.20, "ETHUSD":0.30,"AAPL":0.05, "MSFT":0.17, 
+                       "BTCUSD":0.16, "BTCJPY":0.25, "BTCXAU":0.20, "ETHUSD":0.30,"AAPL":0.05, "MSFT":0.17, 
                         "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
                         "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
                         "USTEC":0.03,"INTC":0.07, "MO":0.05, "BABA":0.13, "ABT":0.08, "LI":0.04, "TME":0.05, "ADBE":0.20, "MMM":0.10, "WMT":0.08, "PFE":0.07, "EQIX":0.87, "F":0.09, "ORCL":0.17, "BA":0.33, "NKE":0.10, "C":0.07,
@@ -471,8 +471,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 6, 26)
-    end_datetime = datetime(2025, 6, 27)
+    start_datetime = datetime(2024, 8, 1)
+    end_datetime = datetime(2025, 6, 25)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -880,7 +880,7 @@ if __name__ == "__main__":
                         # ===== END OF MODIFIED BLOCK =====
                         # =========================================================================
                         
-                        sl_distance_atr = 2.5 * atr_val
+                        sl_distance_atr = 3.0 * atr_val
                         entry_px, sl_px = (0, 0)
                         
                         if m5_setup_bias_setup == "BUY":
