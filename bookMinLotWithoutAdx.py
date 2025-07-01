@@ -438,14 +438,6 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_m5['ATR'] = np.nan
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14) # For M5 RSI
 
-    # --- NEW: ADD ADX CALCULATION HERE ---
-    # Calculate ADX using pandas_ta. The default length is 14.
-    # It returns a DataFrame with ADX, PDI (+DI), and MDI (-DI) columns.
-    adx_df = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'])
-    # We only need the 'ADX_14' column for our filter.
-    df_m5['ADX_14'] = adx_df['ADX_14']
-    # --- END OF NEW CODE ---
-
     # Initial merge for M5 data + H1 EMAs/Close
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled_emas.sort_index(),
                                 left_index=True, right_index=True,
@@ -820,15 +812,6 @@ if __name__ == "__main__":
                         if pd.isna(rsi_m5) or pd.isna(rsi_h1): continue
                         if (m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50)) or \
                            (m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50)): continue
-
-                        # --- NEW: ADD THE ADX TREND STRENGTH FILTER HERE ---
-                        adx_value = previous_candle.get('ADX_14', 0)
-                        if adx_value < 25:
-                            # If ADX is below 25, the trend is considered too weak or non-existent.
-                            # We log this for debugging and skip to the next symbol.
-                            logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 25. Trend not strong enough.")
-                            continue
-                        # --- END OF NEW FILTER ---
 
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
                            (m5_setup_bias_setup == "SELL" and previous_candle['close'] > m5_ema21_val): continue

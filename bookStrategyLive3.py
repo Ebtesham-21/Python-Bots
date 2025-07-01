@@ -74,10 +74,17 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[], 
-"AUDJPY":[],"EURNZD":[], "NZDUSD":[], "AUDUSD":[], "USDCAD":[],"USDJPY":[], "EURJPY":[],"EURCHF":[],
-"USOIL":[], "UKOIL":[],"XAUUSD":[], "XAGUSD":[],
-"BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],
+"EURUSD":[("13:30"), ("14:00")], "USDCHF":[("13:30"), ("14:00")],   "GBPJPY":[("13:30")], "GBPUSD":[("13:30"), ("14:00")], 
+                           "AUDJPY":[("13:30")],   "EURNZD":[], "NZDUSD":[("13:30"), ("14:00")], "AUDUSD":[("13:30"), ("14:00")], "USDCAD":[("13:30"), ("14:00")],"USDJPY":[("13:30"), ("14:00")], "EURJPY":[("13:30")],"EURCHF":[], "CADCHF":[], "CADJPY":[("13:30")], "EURCAD":[],
+                           "GBPCAD":[("13:30")], "NZDCAD":[], "GBPAUD":[("13:30")], "GBPNZD":[("13:30")], "GBPCHF":[("13:30")], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[], 
+                       "USOIL":[("13:30"), ("14:00")], "UKOIL":[], "XAUUSD":[("13:30"), ("14:00")], "XAGUSD":[("13:30"), ("14:00")],
+                       "BTCUSD":[("13:30"), ("14:00")], "BTCJPY":[("13:30")], "BTCXAU":[], "ETHUSD":[("13:30"), ("14:00")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[], 
+                       "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
+
+
+
+
+
 }
 
 # --- CSV File Recording Configuration ---
@@ -586,9 +593,9 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
         entry_lookback = df.iloc[-4:-1]; entry_px, sl_px = (0,0)
         if h1_trend_bias == "BUY":
-            entry_px = entry_lookback['high'].max() + pip_adj; sl_px = entry_px - (3.0 * last_closed_candle['ATR'])
+            entry_px = entry_lookback['high'].max() + pip_adj; sl_px = entry_px - (4.0 * last_closed_candle['ATR'])
         else:
-            entry_px = entry_lookback['low'].min() - pip_adj; sl_px = entry_px + (3.0 * last_closed_candle['ATR'])
+            entry_px = entry_lookback['low'].min() - pip_adj; sl_px = entry_px + (4.0 * last_closed_candle['ATR'])
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
         if abs(entry_px - sl_px) <= 0: continue
         lot_size = props['volume_min']; est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value']
