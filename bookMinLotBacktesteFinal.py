@@ -847,8 +847,8 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
                            (m5_setup_bias_setup == "SELL" and previous_candle['close'] > m5_ema21_val): continue
                         
-                        pullback = (m5_setup_bias_setup == "BUY" and previous_candle['low'] <= m5_ema8) or \
-                                   (m5_setup_bias_setup == "SELL" and previous_candle['high'] >= m5_ema8)
+                        pullback = (m5_setup_bias_setup == "BUY" and previous_candle['close'] <= m5_ema8) or \
+                                   (m5_setup_bias_setup == "SELL" and previous_candle['close'] >= m5_ema8)
                         if not pullback: continue
                         
                         if current_idx < 4: continue
