@@ -2,7 +2,7 @@ TicketID,PositionID,Symbol,Type,OpenTimeUTC,EntryPrice,LotSize,SL_Price,TP_Price
 788450096,788450096,ETHUSD,BUY,2025-06-29T09:29:42+00:00,2449.35,0.1,2442.65,2476.15,2025-06-29T09:59:26+00:00,2447.09,-0.53,LiveBot_v1_Delay,Closed by broker: [sl 2447.09000],0.67
 788553561,788553561,ETHUSD,BUY,2025-06-29T10:22:25+00:00,2457.93,0.1,2447.5,2499.65,2025-06-29T12:06:42+00:00,2459.13,-0.18,LiveBot_v1_Delay,Closed by broker: [sl 2459.13000],1.04
 
---- Performance Summary ---,Generated: 2025-07-04T07:03:05.642552+00:00 ---
+--- Performance Summary ---,Generated: 2025-07-04T11:50:12.978542+00:00 ---
 Metric,Value
 Total Closed Trades,2
 Winning Trades,0
@@ -10,4 +10,4 @@ Losing Trades,2
 Total PNL (Account CCY),-0.71
 Max Drawdown (USD),0.71
 Max Drawdown (%),0.38%
-1597077739,1597077739,AUDCAD,SELL,2025-07-04T06:51:31+00:00,0.89172,0.01,0.8929,0.887,,,,LiveBot_v1_Delay,,0.87
+1597292471,1597292471,NZDUSD,SELL,2025-07-04T09:07:36+00:00,0.60635,0.01,0.60672,0.60487,,,,LiveBot_v1_Delay,,0.37

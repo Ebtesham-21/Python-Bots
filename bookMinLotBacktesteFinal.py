@@ -38,8 +38,13 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 
                              ]
 
-
-# "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade
+# ✅ Step 1: Define Your List of Stock Symbols
+# --- NEW: Define a list of stock symbols for the volume filter ---
+STOCK_SYMBOLS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
+    "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", 
+    "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C"
+]
 
 TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
                            "EURUSD":[(0, 6)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
@@ -68,12 +73,6 @@ SLIPPAGE_PIPS = 0.5 # Simulate 0.5 pips of slippage on entry
 # --- NEW: Commission Structure ---
 # This dictionary holds the commission cost per trade for the minimum lot size.
 # The bot currently only trades the minimum lot, so this value is applied directly.
-
-
-
-
-
-
 COMMISSIONS = {
 
     "EURUSD":0.07, "USDCHF":0.10,   "GBPJPY":0.15, "GBPUSD":0.09, 
@@ -85,7 +84,6 @@ COMMISSIONS = {
                         "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
                         "USTEC":0.03,"INTC":0.07, "MO":0.05, "BABA":0.13, "ABT":0.08, "LI":0.04, "TME":0.05, "ADBE":0.20, "MMM":0.10, "WMT":0.08, "PFE":0.07, "EQIX":0.87, "F":0.09, "ORCL":0.17, "BA":0.33, "NKE":0.10, "C":0.07,
                       
-
                             }
 
 # ✅ Step 3: 📌 Create a Function to Initialize the File
@@ -382,6 +380,7 @@ def timeframe_to_string(tf_enum):
                mt5.TIMEFRAME_D1: "D1", mt5.TIMEFRAME_W1: "W1", mt5.TIMEFRAME_MN1: "MN1" }
     return map_tf.get(tf_enum, "UnknownTF")
 
+# ✅ Step 2: Calculate Volume MA in prepare_symbol_data (Existing code is sufficient)
 def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
     logger.info(f"Preparing data for {symbol} from {start_date} to {end_date}")
 
@@ -437,7 +436,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_m5['ATR'] = np.nan
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14) # For M5 RSI
 
-    # --- NEW: ADD VOLUME MA CALCULATION HERE (as requested) ---
+    # --- ADD VOLUME MA CALCULATION HERE (as requested) ---
+    # The existing implementation is robust and correct for this purpose.
     if 'tick_volume' in df_m5.columns and len(df_m5) >= 20:
         df_m5['volume_MA20'] = ta.sma(df_m5['tick_volume'], length=20)
     else:
@@ -445,18 +445,11 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
     # --- END OF VOLUME MA CALCULATION ---
 
     # --- NEW: ADD ADX CALCULATION HERE ---
-    # Calculate ADX using pandas_ta. The default length is 14.
-    # It returns a DataFrame with ADX, PDI (+DI), and MDI (-DI) columns.
- 
     adx_df = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'])
-    # --- ADDED SAFETY CHECK ---
     if adx_df is not None and not adx_df.empty:
-        # This code only runs if the ADX was calculated successfully
         df_m5['ADX_14'] = adx_df['ADX_14']
     else:
-        # If ADX calculation fails, create a column of NaNs as a placeholder
         df_m5['ADX_14'] = np.nan 
-    # --- END OF FIX ---
 
     # Initial merge for M5 data + H1 EMAs/Close
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled_emas.sort_index(),
@@ -482,17 +475,14 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
                                 left_index=True, right_index=True,
                                 direction='backward', tolerance=pd.Timedelta(hours=4))
 
-    # Note: If df_h1 was empty, df_h1_resampled_rsi has 'RSI_H1' as NaN. merge_asof will propagate these NaNs. Same for H4.
-    # This is the desired behavior. The dropna below will handle rows with insufficient data.
-
     combined_df.dropna(inplace=True)
     return combined_df
 
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2016, 1, 1)
-    end_datetime = datetime(2020, 12, 31)
+    start_datetime = datetime(2020, 1, 1)
+    end_datetime = datetime(2025, 6, 30)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -509,8 +499,7 @@ if __name__ == "__main__":
         all_closed_trades_portfolio = []
         equity_curve_over_time = [] # To track equity for plotting
 
-        # ✅ Step 1: Add a New Variable to Hold "Delayed Setups"
-        delayed_setups_queue = []  # List of setups waiting for confirmation
+        delayed_setups_queue = [] 
 
         symbol_conceptual_start_balances = {}
         trades_per_symbol_map = {sym: [] for sym in SYMBOLS_AVAILABLE_FOR_TRADE}
@@ -833,27 +822,26 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50)) or \
                            (m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50)): continue
 
-                        # --- NEW: ADD THE ADX TREND STRENGTH FILTER HERE ---
+                        # --- ADX TREND STRENGTH FILTER ---
                         adx_value = previous_candle.get('ADX_14', 0)
                         if adx_value < 20:
-                            # If ADX is below 25, the trend is considered too weak or non-existent.
-                            # We log this for debugging and skip to the next symbol.
-                            logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 25. Trend not strong enough.")
+                            # Log message corrected to match the code's value of 20
+                            logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 20. Trend not strong enough.")
                             continue
-                        # --- END OF NEW FILTER ---
+                        
+                        # ✅ Step 3: Add the Conditional Volume Filter in the Main Loop
+                        # --- NEW: CONDITIONAL VOLUME FILTER FOR STOCKS (Replaces previous volume filter) ---
+                        if sym_to_check_setup in STOCK_SYMBOLS:
+                            # Get the volume data from the candle. Use .get() for safety.
+                            current_volume = previous_candle.get('tick_volume', 0)
+                            avg_volume = previous_candle.get('volume_MA20', 0)
 
-                        # --- NEW: INSTITUTIONAL ACTIVITY / VOLUME SPIKE FILTER (as requested) ---
-                        current_volume = previous_candle.get('tick_volume', 0)
-                        avg_volume = previous_candle.get('volume_MA20', 0)
-
-                        # Check if we have valid volume data before filtering
-                        if current_volume > 0 and avg_volume > 0:
-                            # If the current candle's volume is more than, for example, 3 times the recent average,
-                            # it indicates a massive, unusual event. This is often an institution or major news release.
-                            if current_volume > (3.0 * avg_volume):
-                                logger.warning(f"[{sym_to_check_setup}] Condition Fail: Institutional Volume Spike Detected. "
-                                               f"Volume ({current_volume:.0f}) is > 3x average ({avg_volume:.0f}). Skipping trade.")
-                                continue
+                            # Check if we have valid volume data before filtering
+                            if current_volume > 0 and avg_volume > 0:
+                                # The core filter logic: Is the current volume at least 50% greater than the average?
+                                if current_volume < (1.5 * avg_volume):
+                                    logger.debug(f"[{sym_to_check_setup}] Condition Fail: Stock volume ({current_volume:.0f}) is not 1.5x above average ({avg_volume:.0f}). Skipping.")
+                                    continue
                         # --- END OF NEW FILTER ---
 
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
@@ -867,9 +855,6 @@ if __name__ == "__main__":
                         
                         symbol_df = prepared_symbol_data[sym_to_check_setup]
                         
-                        # =========================================================================
-                        # ===== START OF MODIFIED BLOCK WITH NEW FILTERS =====
-                        # =========================================================================
                         recent_candles_weakness = symbol_df.iloc[current_idx - 5 : current_idx - 1]
                         if len(recent_candles_weakness) < 4: continue
                         bullish_count = (recent_candles_weakness['close'] > recent_candles_weakness['open']).sum()
@@ -877,35 +862,27 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and bullish_count > 2) or \
                            (m5_setup_bias_setup == "SELL" and bearish_count > 2): continue
 
-                        # --- START OF NEW LOGIC ---
-                        # Get ATR value early as it's needed for the confluence filter's tolerance
                         atr_val = previous_candle.get('ATR', np.nan)
                         if pd.isna(atr_val) or atr_val <= 0: continue
 
-                        # Define the lookback window for the impulse leg (10 candles before the signal candle)
-                        if current_idx < 12: continue # Ensure we have enough data for the lookback
+                        if current_idx < 12: continue
                         lookback_window_for_swing = symbol_df.iloc[current_idx - 11 : current_idx - 1]
                         if lookback_window_for_swing.empty: continue
 
                         swing_high = lookback_window_for_swing['high'].max()
                         swing_low = lookback_window_for_swing['low'].min()
 
-                        # 1. Pullback Depth Filter
-                        # Define impulse start/end based on bias
                         impulse_start, impulse_end, price_for_pb = (swing_low, swing_high, previous_candle['low']) if m5_setup_bias_setup == "BUY" else (swing_high, swing_low, previous_candle['high'])
                         
-                        # Check if pullback is at least 30%
                         if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, m5_setup_bias_setup) < 0.30:
                             continue
 
-                        # 2. EMA-Fibonacci Confluence Filter
                         fib_levels = calculate_fib_levels(swing_high, swing_low)
-                        tolerance = 0.5 * atr_val # Use 50% of ATR as tolerance
+                        tolerance = 0.5 * atr_val 
                         
                         m5_ema8_val = previous_candle['M5_EMA8']
                         m5_ema13_val = previous_candle['M5_EMA13']
                         
-                        # Check if either EMA is close to any of the calculated Fib levels
                         fib_confluence_found = False
                         for fib_price in fib_levels.values():
                             if abs(m5_ema8_val - fib_price) <= tolerance or abs(m5_ema13_val - fib_price) <= tolerance:
@@ -914,14 +891,10 @@ if __name__ == "__main__":
                         
                         if not fib_confluence_found:
                             continue
-                        # --- END OF NEW LOGIC ---
-
+                        
                         lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
                         
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
-                        # =========================================================================
-                        # ===== END OF MODIFIED BLOCK =====
-                        # =========================================================================
                         
                         sl_distance_atr = 4.0 * atr_val
                         entry_px, sl_px = (0, 0)
