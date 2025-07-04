@@ -1,6 +1,6 @@
 import MetaTrader5 as mt5
 import pandas as pd
-import pandas_ta as ta  # For EMAs, ATR, and ADX
+import pandas_ta as ta  # For EMAs and ATR
 import numpy as np
 import time
 from datetime import datetime, timedelta, timezone
@@ -38,19 +38,20 @@ SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 
                              ]
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
-                           "AUDJPY":[(0, 17)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0, 17)], "EURCAD":[(0, 17)],
-                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,17)], "EURAUD":[(0,17)], 
-                           "AAPL": [(11, 17)] , "MSFT": [(11, 17)], "GOOGL": [(11, 17)], "AMZN": [(11, 17)], "NVDA": [(11, 17)], "META": [(11, 17)], "TSLA": [(11, 17)], "AMD": [(11, 17)], "NFLX": [(11, 17)], "US500": [(11, 17)], 
-                           "USTEC": [(11, 17)],"INTC":[(11, 17)], "MO":[(11, 17)], "BABA":[(11, 17)], "ABT":[(11, 17)], "LI":[(11, 17)], "TME":[(11, 17)], "ADBE":[(11, 17)], "MMM":[(11, 17)], "WMT":[(11, 17)], "PFE":[(11, 17)], "EQIX":[(11, 17)], "F":[(11, 17)], "ORCL":[(11, 17)], "BA":[(11, 17)], "NKE":[(11, 17)], "C":[(11, 17)],
+                           "EURUSD":[(7, 16)], "USDCHF":[(7, 16)],   "GBPJPY": [ (7, 16)], "GBPUSD": [ (7, 16)], 
+                           "AUDJPY":[(0, 4)],  "XAUUSD": [(7, 16)], "XAGUSD": [(7, 16)], "EURNZD": [(7, 16)], "NZDUSD": [(7, 16)], "AUDUSD": [ (7, 16)], "USDCAD": [(12, 16)],"USDJPY":[(0,4), (12, 16)], "EURJPY": [ (0,4) , (7, 16)],"EURCHF": [(7, 16)], "CADCHF": [  (7, 16)], "CADJPY": [ (0,4) , (12, 16)], "EURCAD":[(7, 16)],
+                           "GBPCAD": [(7, 16)], "NZDCAD":[(12,16)], "GBPAUD":[(0,4), (7, 16)], "GBPNZD":[(7,16)], "GBPCHF":[(7,16)], "AUDCAD":[(0,4) , (12,16)], "AUDCHF":[(0,4) , (7,16)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,16)], 
+
+                           "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
+                           "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
                           
                           }
 
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 17)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 17)]
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(7, 16)]
 
 # --- REVERTED CHANGE: Crypto sessions are back to your original specification ---
-CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17)], "ETHUSD":[(0, 17)]}
+CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 16)], "BTCJPY":[(0, 16)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
@@ -73,12 +74,16 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[], 
-                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[ ], "AUDUSD":[ ], "USDCAD":[ ],"USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[("6:30")], "AUDCAD":[], "AUDCHF":[("6:30")], "AUDNZD":[], "EURAUD":[], 
-                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
-                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[], 
+"EURUSD":[("13:30"), ("14:00")], "USDCHF":[("13:30"), ("14:00")],   "GBPJPY":[("13:30")], "GBPUSD":[("13:30"), ("14:00")], 
+                           "AUDJPY":[("13:30")],   "EURNZD":[], "NZDUSD":[("13:30"), ("14:00")], "AUDUSD":[("13:30"), ("14:00")], "USDCAD":[("13:30"), ("14:00")],"USDJPY":[("13:30"), ("14:00")], "EURJPY":[("13:30")],"EURCHF":[], "CADCHF":[], "CADJPY":[("13:30")], "EURCAD":[],
+                           "GBPCAD":[("13:30")], "NZDCAD":[], "GBPAUD":[("13:30")], "GBPNZD":[("13:30")], "GBPCHF":[("13:30")], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[], 
+                       "USOIL":[("13:30"), ("14:00")], "UKOIL":[], "XAUUSD":[("13:30"), ("14:00")], "XAGUSD":[("13:30"), ("14:00")],
+                       "BTCUSD":[("13:30"), ("14:00")], "BTCJPY":[("13:30")], "BTCXAU":[], "ETHUSD":[("13:30"), ("14:00")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[], 
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
+
+
+
+
 
 }
 
@@ -104,10 +109,13 @@ def load_state_from_csv():
     global logged_open_position_ids, trade_details_for_closure
     logged_open_position_ids.clear()
     trade_details_for_closure.clear()
+
+    # --- START: Corrected Logic ---
     trade_data_lines = []
     try:
         with open(TRADE_HISTORY_FILE, 'r', newline='', encoding='utf-8') as f:
             for line in f:
+                # Stop reading as soon as we hit the summary section
                 if "--- Performance Summary ---" in line:
                     break
                 trade_data_lines.append(line)
@@ -117,13 +125,23 @@ def load_state_from_csv():
     except Exception as e:
         logger.error(f"Error reading {TRADE_HISTORY_FILE} for state loading: {e}")
         return
+
+    # If the file only has a header or is empty, there's nothing to load.
     if len(trade_data_lines) <= 1:
         logger.info("No valid trade data in history file to load state from.")
         return
+
+    # Create an in-memory CSV buffer from the clean trade lines only
     csv_content_buffer = io.StringIO("".join(trade_data_lines))
+    # --- END: Corrected Logic ---
+
     try:
+        # Now, read the clean data into pandas
         df = pd.read_csv(csv_content_buffer, dtype={'PositionID': str})
+
+        # This filter is still a good secondary safeguard
         df = df[df['PositionID'].str.isdigit().fillna(False)]
+
         open_trades_df = df[df['CloseTimeUTC'].isnull() | (df['CloseTimeUTC'] == '')]
         for _, row in open_trades_df.iterrows():
             pos_id = str(row['PositionID'])
@@ -309,22 +327,35 @@ def shutdown_mt5_interface():
     mt5.shutdown()
     logger.info("MetaTrader 5 Shutdown")
 
-# --- Live Bot Helper Functions (unchanged, except where noted) ---
+# --- Live Bot Helper Functions ---
 
 def is_weekend_utc():
     now_utc = datetime.now(timezone.utc)
     return now_utc.weekday() >= 5 # 5=Saturday, 6=Sunday
 
+# --- NEW HELPER FUNCTION FOR DYNAMIC CLOCK ---
 def get_reference_clock_symbol():
+    """
+    Dynamically selects the best market clock symbol based on the day of the week.
+    - On weekends, it prioritizes a 24/7 crypto symbol.
+    - On weekdays, it prioritizes a high-liquidity Forex symbol.
+    - Includes fallbacks for robustness.
+    """
     if is_weekend_utc():
+        # On weekends, a 24/7 clock is required. Prioritize BTC, then ETH.
         if "BTCUSD" in SYMBOLS_AVAILABLE_FOR_TRADE: return "BTCUSD"
         if "ETHUSD" in SYMBOLS_AVAILABLE_FOR_TRADE: return "ETHUSD"
+        # If no crypto is available on the weekend, the bot cannot run.
         return None
     else:
+        # On weekdays, prioritize a major FX pair.
         if "EURUSD" in SYMBOLS_AVAILABLE_FOR_TRADE: return "EURUSD"
+        # If EURUSD is missing, fall back to a 24/7 clock just in case.
         if "BTCUSD" in SYMBOLS_AVAILABLE_FOR_TRADE: return "BTCUSD"
         if "ETHUSD" in SYMBOLS_AVAILABLE_FOR_TRADE: return "ETHUSD"
+        # Absolute last resort
         if SYMBOLS_AVAILABLE_FOR_TRADE: return SYMBOLS_AVAILABLE_FOR_TRADE[0]
+        # If nothing is available at all.
         return None
 
 def is_within_session(symbol_sessions):
@@ -375,7 +406,7 @@ def get_latest_m5_candle_time(reference_symbol):
         logger.error(f"Error in get_latest_m5_candle_time for '{reference_symbol}': {e}")
         return None
 
-# --- MODIFIED: ADX Calculation added ---
+# --- All other functions (fetch_latest_data, strategy logic, trade actions, management routines) are unchanged ---
 def fetch_latest_data(symbol):
     df_h4 = get_live_data(symbol, mt5.TIMEFRAME_H4, 100)
     df_h1 = get_live_data(symbol, mt5.TIMEFRAME_H1, 100)
@@ -383,47 +414,20 @@ def fetch_latest_data(symbol):
     if df_h4.empty or df_h1.empty or df_m5.empty or len(df_m5) < 2:
         logger.warning(f"Could not fetch complete data for {symbol} or not enough M5 candles. Skipping analysis.")
         return None, None
-        
-    # H4 Indicators
-    df_h4['H4_EMA8'] = ta.ema(df_h4['close'], length=8)
-    df_h4['H4_EMA21'] = ta.ema(df_h4['close'], length=21)
-    df_h4['RSI_H4'] = ta.rsi(df_h4['close'], length=14)
-    
-    # H1 Indicators (including ADX)
-    df_h1['H1_EMA8'] = ta.ema(df_h1['close'], length=8)
-    df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21)
-    df_h1['RSI_H1'] = ta.rsi(df_h1['close'], length=14)
-    
-    # --- NEW: Calculate ADX on H1 data ---
-    adx_h1 = ta.adx(df_h1['high'], df_h1['low'], df_h1['close'], length=14)
-    if adx_h1 is not None and not adx_h1.empty:
-        df_h1['H1_ADX'] = adx_h1['ADX_14']
-    else:
-        df_h1['H1_ADX'] = np.nan # Handle case where ADX calculation fails
-    
+    df_h4['H4_EMA8'] = ta.ema(df_h4['close'], length=8); df_h4['H4_EMA21'] = ta.ema(df_h4['close'], length=21); df_h4['RSI_H4'] = ta.rsi(df_h4['close'], length=14)
+    df_h1['H1_EMA8'] = ta.ema(df_h1['close'], length=8); df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21); df_h1['RSI_H1'] = ta.rsi(df_h1['close'], length=14)
     df_h1.rename(columns={'close': 'H1_Close_For_Bias'}, inplace=True)
-    
-    # M5 Indicators
-    df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
-    df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13)
-    df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
-    df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
-    df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14)
-    
-    # --- NEW: Include H1_ADX in the merge ---
-    combined_df = pd.merge_asof(df_m5.sort_index(), df_h1[['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', 'RSI_H1', 'H1_ADX']].sort_index(),
+    df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8); df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13); df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
+    df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14); df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14)
+    combined_df = pd.merge_asof(df_m5.sort_index(), df_h1[['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', 'RSI_H1']].sort_index(),
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=1))
-    
     combined_df = pd.merge_asof(combined_df.sort_index(), df_h4[['H4_EMA8', 'H4_EMA21', 'RSI_H4']].sort_index(),
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=4))
-    
     combined_df.dropna(inplace=True)
     if combined_df.empty or len(combined_df) < 2:
         logger.warning(f"Not enough data for {symbol} after combining and cleaning. Skipping analysis.")
         return None, None
-        
     return combined_df, combined_df.iloc[-2]
-
 
 def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
     total_leg = abs(impulse_end - impulse_start)
@@ -505,7 +509,7 @@ def manage_open_positions():
             trade_data = {"TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol, "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL", "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(), "EntryPrice": position.price_open, "LotSize": position.volume, "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "", "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "", "RiskedAmount": f"{risk_amount:.2f}"}
             append_trade_to_csv(trade_data)
             logged_open_position_ids.add(pos_id_str)
-            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 1.0}
+            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 1.5}
             continue
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
@@ -544,7 +548,6 @@ def manage_pending_orders():
             logger.info(f"[{order.symbol}] PENDING order {order.ticket} invalidated (Close vs M5_EMA21). Cancelling...")
             cancel_pending_order(order.ticket)
 
-# --- MODIFIED: ADX Filter added ---
 def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
     new_queue, order_placed_this_cycle = [], False
@@ -565,84 +568,46 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         else: new_queue.append(setup)
     delayed_setups_queue = new_queue
     if order_placed_this_cycle: return daily_risk_allocated
-    
     for symbol in SYMBOLS_AVAILABLE_FOR_TRADE:
-        # Initial checks
         if is_weekend_utc() and symbol not in CRYPTO_SYMBOLS: continue
         if not is_within_session(TRADING_SESSIONS_UTC.get(symbol, [])): continue
         if not is_outside_news_blackout(symbol, NEWS_TIMES_UTC): continue
-        
-        # Data and properties
         df, last_closed_candle = fetch_latest_data(symbol)
         if df is None or last_closed_candle is None: continue
         props = ALL_SYMBOL_PROPERTIES[symbol]; pip_adj = 3 * props['trade_tick_size']
-
-        # --- Strategy Conditions ---
-        # 1. H1 Trend Bias
         h1_trend_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
         if not h1_trend_bias: continue
-        
-        # 2. M5 EMA Alignment
         m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
         m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
         if not ((h1_trend_bias == "BUY" and m5_fanned_buy) or (h1_trend_bias == "SELL" and m5_fanned_sell)): continue
-        
-        # 3. H4 Trend Alignment
         if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
-        
-        # --- NEW: 4. ADX Trend Strength Filter ---
-        adx_value = last_closed_candle.get('H1_ADX', 0)
-        if pd.isna(adx_value) or adx_value < 20:
-            # Uncomment the line below for verbose logging of skipped trades
-            logger.debug(f"[{symbol}] Setup skipped. H1_ADX value ({adx_value:.2f}) is below 20.")
-            continue # If ADX is not present or is weak, skip to the next symbol
-
-        # 5. RSI Alignment
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
-
-        # 6. Price vs M5 EMA21
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
-        
-        # 7. Pullback to M5 EMA8
         if not ((h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8'])): continue
-        
-        # 8. Exhaustion Candle Check
         recent_candles = df.iloc[-6:-2]; bullish_count = (recent_candles['close'] > recent_candles['open']).sum(); bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
         if (h1_trend_bias == "BUY" and bullish_count > 2) or (h1_trend_bias == "SELL" and bearish_count > 2): continue
-        
-        # 9. Pullback Depth
         lookback_window = df.iloc[-12:-2]; swing_high, swing_low = lookback_window['high'].max(), lookback_window['low'].min()
         impulse_start, impulse_end, price_for_pb = (swing_low, swing_high, last_closed_candle['low']) if h1_trend_bias == "BUY" else (swing_high, swing_low, last_closed_candle['high'])
         if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, h1_trend_bias) < 0.30: continue
-        
-        # 10. Fib / EMA Confluence
         fib_levels = calculate_fib_levels(swing_high, swing_low); tolerance = 0.5 * last_closed_candle['ATR']
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
-        
-        # --- Entry and SL calculation ---
         entry_lookback = df.iloc[-4:-1]; entry_px, sl_px = (0,0)
         if h1_trend_bias == "BUY":
-            entry_px = entry_lookback['high'].max() + pip_adj
-            sl_px = entry_px - (4.0 * last_closed_candle['ATR'])
-        else: # SELL
-            entry_px = entry_lookback['low'].min() - pip_adj
-            sl_px = entry_px + (4.0 * last_closed_candle['ATR'])
+            entry_px = entry_lookback['high'].max() + pip_adj; sl_px = entry_px - (4.0 * last_closed_candle['ATR'])
+        else:
+            entry_px = entry_lookback['low'].min() - pip_adj; sl_px = entry_px + (4.0 * last_closed_candle['ATR'])
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
-        
-        # --- Final Checks & Queue ---
         if abs(entry_px - sl_px) <= 0: continue
         lot_size = props['volume_min']; est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value']
         if est_risk > mt5.account_info().balance * RISK_PER_TRADE_PERCENT:
             logger.info(f"[{symbol}] Setup found but min lot risk ({est_risk:.2f}) exceeds max allowed. Skipping.")
             continue
-            
         delayed_setups_queue.append({"symbol": symbol, "bias": h1_trend_bias, "entry_price": entry_px, "sl_price": sl_px, "lot_size": lot_size, "risk_amt": est_risk, "confirm_count": 0})
         logger.info(f"[{symbol}] SETUP QUEUED for delayed confirmation. Bias: {h1_trend_bias}, Entry: {entry_px}")
         break
-        
     return daily_risk_allocated
 
-# --- Main Execution (unchanged) ---
+# --- Main Execution ---
 
 if __name__ == "__main__":
     if not initialize_mt5_interface(SYMBOLS_TO_TRADE):
@@ -666,15 +631,19 @@ if __name__ == "__main__":
     try:
         while True:
             # --- UPDATED DYNAMIC CLOCK LOGIC ---
+            # Determine the correct clock for this specific moment in time.
             clock_symbol = get_reference_clock_symbol()
 
             if not clock_symbol:
+                # This happens if it's the weekend and no crypto symbols are available to act as a clock.
                 logger.warning("Could not determine a valid market clock. Bot is paused. Checking again in 60s.")
                 time.sleep(60)
                 continue
 
+            # Fetch the latest candle time using the dynamically selected clock.
             current_candle_time = get_latest_m5_candle_time(clock_symbol)
             
+            # The rest of the loop logic remains the same.
             if current_candle_time is not None and current_candle_time != last_processed_candle_time:
                 logger.info(f"New M5 candle detected using clock '{clock_symbol}'. Time: {datetime.fromtimestamp(current_candle_time, tz=timezone.utc)}. Processing...")
                 last_processed_candle_time = current_candle_time

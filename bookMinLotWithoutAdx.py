@@ -471,8 +471,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 6, 29)
-    end_datetime = datetime(2025, 6, 30)
+    start_datetime = datetime(2025, 6, 26)
+    end_datetime = datetime(2025, 6, 27)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
