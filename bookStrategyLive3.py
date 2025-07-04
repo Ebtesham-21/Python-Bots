@@ -37,19 +37,17 @@ SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                        "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
 
                              ]
-TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(7, 16)], "USDCHF":[(7, 16)],   "GBPJPY": [ (7, 16)], "GBPUSD": [ (7, 16)], 
-                           "AUDJPY":[(0, 4)],  "XAUUSD": [(7, 16)], "XAGUSD": [(7, 16)], "EURNZD": [(7, 16)], "NZDUSD": [(7, 16)], "AUDUSD": [ (7, 16)], "USDCAD": [(12, 16)],"USDJPY":[(0,4), (12, 16)], "EURJPY": [ (0,4) , (7, 16)],"EURCHF": [(7, 16)], "CADCHF": [  (7, 16)], "CADJPY": [ (0,4) , (12, 16)], "EURCAD":[(7, 16)],
-                           "GBPCAD": [(7, 16)], "NZDCAD":[(12,16)], "GBPAUD":[(0,4), (7, 16)], "GBPNZD":[(7,16)], "GBPCHF":[(7,16)], "AUDCAD":[(0,4) , (12,16)], "AUDCHF":[(0,4) , (7,16)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,16)], 
-                           "AAPL": [(11, 17)] , "MSFT": [(11, 17)], "GOOGL": [(11, 17)], "AMZN": [(11, 17)], "NVDA": [(11, 17)], "META": [(11, 17)], "TSLA": [(11, 17)], "AMD": [(11, 17)], "NFLX": [(11, 17)], "US500": [(11, 17)], 
-                           "USTEC": [(11, 17)],"INTC":[(11, 17)], "MO":[(11, 17)], "BABA":[(11, 17)], "ABT":[(11, 17)], "LI":[(11, 17)], "TME":[(11, 17)], "ADBE":[(11, 17)], "MMM":[(11, 17)], "WMT":[(11, 17)], "PFE":[(11, 17)], "EQIX":[(11, 17)], "F":[(11, 17)], "ORCL":[(11, 17)], "BA":[(11, 17)], "NKE":[(11, 17)], "C":[(11, 17)],
+TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
+                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
+                           "AUDJPY":[(0, 12)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
+                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,12)], "EURAUD":[(0,17)], 
+                           "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(10, 17)], 
+                           "USTEC": [(10, 17)],"INTC":[(10, 17)], "MO":[(10, 17)], "BABA":[(10, 17)], "ABT":[(10, 17)], "LI":[(10, 17)], "TME":[(10, 17)], "ADBE":[(10, 17)], "MMM":[(10, 17)], "WMT":[(10, 17)], "PFE":[(10, 17)], "EQIX":[(10, 17)], "F":[(10, 17)], "ORCL":[(10, 17)], "BA":[(10, 17)], "NKE":[(10, 17)], "C":[(10, 17)],
                           
-                          }
+}
 
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 17)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 17)]
-
-# --- REVERTED CHANGE: Crypto sessions are back to your original specification ---
+TRADING_SESSIONS_UTC["USOIL"] = [(0, 17)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(0, 17)]
 CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17)], "ETHUSD":[(0, 17)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
@@ -75,7 +73,7 @@ COMMISSIONS = {
 NEWS_TIMES_UTC = {
 "EURUSD":[ ], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[], 
                            "AUDJPY":[],   "EURNZD":[], "NZDUSD":[ ], "AUDUSD":[ ], "USDCAD":[ ],"USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[("6:30")], "AUDCAD":[], "AUDCHF":[("6:30")], "AUDNZD":[], "EURAUD":[], 
+                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[], 
                        "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
                        "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[], 
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
@@ -375,7 +373,7 @@ def get_latest_m5_candle_time(reference_symbol):
         logger.error(f"Error in get_latest_m5_candle_time for '{reference_symbol}': {e}")
         return None
 
-# --- MODIFIED: ADX Calculation added ---
+# --- MODIFIED: ADX and volume_MA20 Calculation added ---
 def fetch_latest_data(symbol):
     df_h4 = get_live_data(symbol, mt5.TIMEFRAME_H4, 100)
     df_h1 = get_live_data(symbol, mt5.TIMEFRAME_H1, 100)
@@ -394,7 +392,6 @@ def fetch_latest_data(symbol):
     df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21)
     df_h1['RSI_H1'] = ta.rsi(df_h1['close'], length=14)
     
-    # --- NEW: Calculate ADX on H1 data ---
     adx_h1 = ta.adx(df_h1['high'], df_h1['low'], df_h1['close'], length=14)
     if adx_h1 is not None and not adx_h1.empty:
         df_h1['H1_ADX'] = adx_h1['ADX_14']
@@ -409,6 +406,13 @@ def fetch_latest_data(symbol):
     df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
     df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14)
+
+    # --- NEW: Calculate 20-period moving average of volume ---
+    if 'tick_volume' in df_m5.columns and len(df_m5) >= 20:
+        df_m5['volume_MA20'] = ta.sma(df_m5['tick_volume'], length=20)
+    else:
+        df_m5['volume_MA20'] = np.nan
+    # --- END OF NEW CALCULATION ---
     
     # --- NEW: Include H1_ADX in the merge ---
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1[['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', 'RSI_H1', 'H1_ADX']].sort_index(),
@@ -544,7 +548,7 @@ def manage_pending_orders():
             logger.info(f"[{order.symbol}] PENDING order {order.ticket} invalidated (Close vs M5_EMA21). Cancelling...")
             cancel_pending_order(order.ticket)
 
-# --- MODIFIED: ADX Filter added ---
+# --- MODIFIED: Volume Spike Filter added ---
 def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
     new_queue, order_placed_this_cycle = [], False
@@ -578,6 +582,21 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         props = ALL_SYMBOL_PROPERTIES[symbol]; pip_adj = 3 * props['trade_tick_size']
 
         # --- Strategy Conditions ---
+        
+        # --- NEW: INSTITUTIONAL ACTIVITY / VOLUME SPIKE FILTER ---
+        current_volume = last_closed_candle.get('tick_volume', 0)
+        avg_volume = last_closed_candle.get('volume_MA20', 0)
+
+        # Check if we have valid volume data before filtering
+        if pd.notna(current_volume) and pd.notna(avg_volume) and current_volume > 0 and avg_volume > 0:
+            # If the current candle's volume is more than, for example, 3 times the recent average,
+            # it indicates a massive, unusual event. This is often an institution or major news release.
+            if current_volume > (3.0 * avg_volume):
+                logger.warning(f"[{symbol}] Condition Fail: Institutional Volume Spike Detected. "
+                               f"Volume ({current_volume:.0f}) is > 3x average ({avg_volume:.0f}). Skipping trade.")
+                continue
+        # --- END OF NEW FILTER ---
+
         # 1. H1 Trend Bias
         h1_trend_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
         if not h1_trend_bias: continue
@@ -590,12 +609,11 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # 3. H4 Trend Alignment
         if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
         
-        # --- NEW: 4. ADX Trend Strength Filter ---
+        # 4. ADX Trend Strength Filter
         adx_value = last_closed_candle.get('H1_ADX', 0)
         if pd.isna(adx_value) or adx_value < 20:
-            # Uncomment the line below for verbose logging of skipped trades
             logger.debug(f"[{symbol}] Setup skipped. H1_ADX value ({adx_value:.2f}) is below 20.")
-            continue # If ADX is not present or is weak, skip to the next symbol
+            continue 
 
         # 5. RSI Alignment
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
