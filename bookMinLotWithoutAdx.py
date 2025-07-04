@@ -41,14 +41,14 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 
 # "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade
 
-TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
+TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
                            "EURUSD":[(7, 16)], "USDCHF":[(7, 16)],   "GBPJPY": [ (7, 16)], "GBPUSD": [ (7, 16)], 
                            "AUDJPY":[(0, 4)],  "XAUUSD": [(7, 16)], "XAGUSD": [(7, 16)], "EURNZD": [(7, 16)], "NZDUSD": [(7, 16)], "AUDUSD": [ (7, 16)], "USDCAD": [(12, 16)],"USDJPY":[(0,4), (12, 16)], "EURJPY": [ (0,4) , (7, 16)],"EURCHF": [(7, 16)], "CADCHF": [  (7, 16)], "CADJPY": [ (0,4) , (12, 16)], "EURCAD":[(7, 16)],
                            "GBPCAD": [(7, 16)], "NZDCAD":[(12,16)], "GBPAUD":[(0,4), (7, 16)], "GBPNZD":[(7,16)], "GBPCHF":[(7,16)], "AUDCAD":[(0,4) , (12,16)], "AUDCHF":[(0,4) , (7,16)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,16)], 
-                           "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
-                           "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+                           "AAPL": [(11, 17)] , "MSFT": [(11, 17)], "GOOGL": [(11, 17)], "AMZN": [(11, 17)], "NVDA": [(11, 17)], "META": [(11, 17)], "TSLA": [(11, 17)], "AMD": [(11, 17)], "NFLX": [(11, 17)], "US500": [(11, 17)], 
+                           "USTEC": [(11, 17)],"INTC":[(11, 17)], "MO":[(11, 17)], "BABA":[(11, 17)], "ABT":[(11, 17)], "LI":[(11, 17)], "TME":[(11, 17)], "ADBE":[(11, 17)], "MMM":[(11, 17)], "WMT":[(11, 17)], "PFE":[(11, 17)], "EQIX":[(11, 17)], "F":[(11, 17)], "ORCL":[(11, 17)], "BA":[(11, 17)], "NKE":[(11, 17)], "C":[(11, 17)],
                           
-                          }
+}
 
 
 TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
