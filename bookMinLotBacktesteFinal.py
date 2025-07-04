@@ -42,18 +42,18 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 # "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade
 
 TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(7, 16)], "USDCHF":[(7, 16)],   "GBPJPY": [ (7, 16)], "GBPUSD": [ (7, 16)], 
-                           "AUDJPY":[(0, 4)],  "XAUUSD": [(7, 16)], "XAGUSD": [(7, 16)], "EURNZD": [(7, 16)], "NZDUSD": [(7, 16)], "AUDUSD": [ (7, 16)], "USDCAD": [(12, 16)],"USDJPY":[(0,4), (12, 16)], "EURJPY": [ (0,4) , (7, 16)],"EURCHF": [(7, 16)], "CADCHF": [  (7, 16)], "CADJPY": [ (0,4) , (12, 16)], "EURCAD":[(7, 16)],
-                           "GBPCAD": [(7, 16)], "NZDCAD":[(12,16)], "GBPAUD":[(0,4), (7, 16)], "GBPNZD":[(7,16)], "GBPCHF":[(7,16)], "AUDCAD":[(0,4) , (12,16)], "AUDCHF":[(0,4) , (7,16)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,16)], 
-                           "AAPL": [(14, 17)] , "MSFT": [(14, 17)], "GOOGL": [(14, 17)], "AMZN": [(14, 17)], "NVDA": [(14, 17)], "META": [(14, 17)], "TSLA": [(14, 17)], "AMD": [(14, 17)], "NFLX": [(14, 17)], "US500": [(14, 17)], 
-                           "USTEC": [(14, 17)],"INTC":[(14, 17)], "MO":[(14, 17)], "BABA":[(14, 17)], "ABT":[(14, 17)], "LI":[(14, 17)], "TME":[(14, 17)], "ADBE":[(14, 17)], "MMM":[(14, 17)], "WMT":[(14, 17)], "PFE":[(14, 17)], "EQIX":[(14, 17)], "F":[(14, 17)], "ORCL":[(14, 17)], "BA":[(14, 17)], "NKE":[(14, 17)], "C":[(14, 17)],
+                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
+                           "AUDJPY":[(0, 17)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0, 17)], "EURCAD":[(0, 17)],
+                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,17)], "EURAUD":[(0,17)], 
+                           "AAPL": [(11, 17)] , "MSFT": [(11, 17)], "GOOGL": [(11, 17)], "AMZN": [(11, 17)], "NVDA": [(11, 17)], "META": [(11, 17)], "TSLA": [(11, 17)], "AMD": [(11, 17)], "NFLX": [(11, 17)], "US500": [(11, 17)], 
+                           "USTEC": [(11, 17)],"INTC":[(11, 17)], "MO":[(11, 17)], "BABA":[(11, 17)], "ABT":[(11, 17)], "LI":[(11, 17)], "TME":[(11, 17)], "ADBE":[(11, 17)], "MMM":[(11, 17)], "WMT":[(11, 17)], "PFE":[(11, 17)], "EQIX":[(11, 17)], "F":[(11, 17)], "ORCL":[(11, 17)], "BA":[(11, 17)], "NKE":[(11, 17)], "C":[(11, 17)],
                           
                           }
 
 
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 16)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 16)]
-CRYPTO_SESSIONS_USER = {"BTCUSD":[(7, 16)], "BTCJPY":[(0, 16)], "BTCXAU":[(7, 16)], "ETHUSD":[(7, 16)]}
+TRADING_SESSIONS_UTC["USOIL"] = [(12, 17)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(7, 17)]
+CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17)], "ETHUSD":[(0, 17)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
@@ -441,10 +441,16 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
     # --- NEW: ADD ADX CALCULATION HERE ---
     # Calculate ADX using pandas_ta. The default length is 14.
     # It returns a DataFrame with ADX, PDI (+DI), and MDI (-DI) columns.
+ 
     adx_df = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'])
-    # We only need the 'ADX_14' column for our filter.
-    df_m5['ADX_14'] = adx_df['ADX_14']
-    # --- END OF NEW CODE ---
+    # --- ADDED SAFETY CHECK ---
+    if adx_df is not None and not adx_df.empty:
+        # This code only runs if the ADX was calculated successfully
+        df_m5['ADX_14'] = adx_df['ADX_14']
+    else:
+        # If ADX calculation fails, create a column of NaNs as a placeholder
+        df_m5['ADX_14'] = np.nan 
+    # --- END OF FIX ---
 
     # Initial merge for M5 data + H1 EMAs/Close
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1_resampled_emas.sort_index(),
@@ -479,7 +485,7 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 6, 29)
+    start_datetime = datetime(2020, 1, 1)
     end_datetime = datetime(2025, 6, 30)
     
     # ✅ Call initialization function once
@@ -714,7 +720,7 @@ if __name__ == "__main__":
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
                                     "ts_trigger_atr_multiple": 1.5,
-                                    "ts_next_atr_level": 1.5,
+                                    "ts_next_atr_level": 1.0,
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
@@ -823,7 +829,7 @@ if __name__ == "__main__":
 
                         # --- NEW: ADD THE ADX TREND STRENGTH FILTER HERE ---
                         adx_value = previous_candle.get('ADX_14', 0)
-                        if adx_value < 25:
+                        if adx_value < 20:
                             # If ADX is below 25, the trend is considered too weak or non-existent.
                             # We log this for debugging and skip to the next symbol.
                             logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 25. Trend not strong enough.")
