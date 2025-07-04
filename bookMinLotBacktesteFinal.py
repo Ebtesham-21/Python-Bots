@@ -42,16 +42,16 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
 # "NVDA",  "AAPL", "AMD", "AMZN", "GOOGL" stocks to trade
 
 TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
-                           "AUDJPY":[(0, 4)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(7, 17)], "CADCHF": [  (7, 17)], "CADJPY": [ (0,4) , (12, 17)], "EURCAD":[(7, 17)],
-                           "GBPCAD": [(7, 17)], "NZDCAD":[(12,17)], "GBPAUD":[(0,4), (7, 17)], "GBPNZD":[(7,17)], "GBPCHF":[(7,17)], "AUDCAD":[(0,4) , (12,17)], "AUDCHF":[(0,4) , (7,17)], "AUDNZD":[(0,4)], "EURAUD":[(0,4) , (7,17)], 
-                           "AAPL": [(11, 17)] , "MSFT": [(11, 17)], "GOOGL": [(11, 17)], "AMZN": [(11, 17)], "NVDA": [(11, 17)], "META": [(11, 17)], "TSLA": [(11, 17)], "AMD": [(11, 17)], "NFLX": [(11, 17)], "US500": [(11, 17)], 
-                           "USTEC": [(11, 17)],"INTC":[(11, 17)], "MO":[(11, 17)], "BABA":[(11, 17)], "ABT":[(11, 17)], "LI":[(11, 17)], "TME":[(11, 17)], "ADBE":[(11, 17)], "MMM":[(11, 17)], "WMT":[(11, 17)], "PFE":[(11, 17)], "EQIX":[(11, 17)], "F":[(11, 17)], "ORCL":[(11, 17)], "BA":[(11, 17)], "NKE":[(11, 17)], "C":[(11, 17)],
+                           "EURUSD":[(0, 6)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
+                           "AUDJPY":[(0, 12)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
+                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,12)], "EURAUD":[(0,17)], 
+                           "AAPL": [(0, 17)] , "MSFT": [(0, 17)], "GOOGL": [(0, 17)], "AMZN": [(0, 17)], "NVDA": [(0, 17)], "META": [(0, 17)], "TSLA": [(0, 17)], "AMD": [(0, 17)], "NFLX": [(0, 17)], "US500": [(0, 17)], 
+                           "USTEC": [(0, 17)],"INTC":[(0, 17)], "MO":[(0, 17)], "BABA":[(0, 17)], "ABT":[(0, 17)], "LI":[(0, 17)], "TME":[(0, 17)], "ADBE":[(0, 17)], "MMM":[(0, 17)], "WMT":[(0, 17)], "PFE":[(0, 17)], "EQIX":[(0, 17)], "F":[(0, 17)], "ORCL":[(0, 17)], "BA":[(0, 17)], "NKE":[(0, 17)], "C":[(0, 17)],
                           
 }
 
-TRADING_SESSIONS_UTC["USOIL"] = [(12, 17)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(7, 17)]
+TRADING_SESSIONS_UTC["USOIL"] = [(0, 17)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(0, 17)]
 CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17)], "ETHUSD":[(0, 17)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
@@ -437,6 +437,13 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
         df_m5['ATR'] = np.nan
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14) # For M5 RSI
 
+    # --- NEW: ADD VOLUME MA CALCULATION HERE (as requested) ---
+    if 'tick_volume' in df_m5.columns and len(df_m5) >= 20:
+        df_m5['volume_MA20'] = ta.sma(df_m5['tick_volume'], length=20)
+    else:
+        df_m5['volume_MA20'] = np.nan
+    # --- END OF VOLUME MA CALCULATION ---
+
     # --- NEW: ADD ADX CALCULATION HERE ---
     # Calculate ADX using pandas_ta. The default length is 14.
     # It returns a DataFrame with ADX, PDI (+DI), and MDI (-DI) columns.
@@ -484,8 +491,8 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2020, 1, 1)
-    end_datetime = datetime(2025, 6, 30)
+    start_datetime = datetime(2016, 1, 1)
+    end_datetime = datetime(2020, 12, 31)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -833,6 +840,20 @@ if __name__ == "__main__":
                             # We log this for debugging and skip to the next symbol.
                             logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 25. Trend not strong enough.")
                             continue
+                        # --- END OF NEW FILTER ---
+
+                        # --- NEW: INSTITUTIONAL ACTIVITY / VOLUME SPIKE FILTER (as requested) ---
+                        current_volume = previous_candle.get('tick_volume', 0)
+                        avg_volume = previous_candle.get('volume_MA20', 0)
+
+                        # Check if we have valid volume data before filtering
+                        if current_volume > 0 and avg_volume > 0:
+                            # If the current candle's volume is more than, for example, 3 times the recent average,
+                            # it indicates a massive, unusual event. This is often an institution or major news release.
+                            if current_volume > (3.0 * avg_volume):
+                                logger.warning(f"[{sym_to_check_setup}] Condition Fail: Institutional Volume Spike Detected. "
+                                               f"Volume ({current_volume:.0f}) is > 3x average ({avg_volume:.0f}). Skipping trade.")
+                                continue
                         # --- END OF NEW FILTER ---
 
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
