@@ -515,7 +515,7 @@ def manage_open_positions():
             trade_data = {"TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol, "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL", "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(), "EntryPrice": position.price_open, "LotSize": position.volume, "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "", "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "", "RiskedAmount": f"{risk_amount:.2f}"}
             append_trade_to_csv(trade_data)
             logged_open_position_ids.add(pos_id_str)
-            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 1.0}
+            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 1.5}
             continue
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
@@ -617,12 +617,18 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # 3. H4 Trend Alignment
         if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
 
-        # 4. ADX Trend Strength Filter
-        adx_value = last_closed_candle.get('H1_ADX', 0)
-        if pd.isna(adx_value) or adx_value < 20:
-            logger.debug(f"[{symbol}] Setup skipped. H1_ADX value ({adx_value:.2f}) is below 20.")
-            continue
+        # --- NEW HYBRID ADX FILTER ---
+        is_crypto = symbol in CRYPTO_SYMBOLS
 
+        # Only apply the ADX filter if the symbol is NOT a crypto asset
+        if not is_crypto:
+            adx_value = last_closed_candle.get('H1_ADX', 0)
+            if pd.isna(adx_value) or adx_value < 25: # Using the robust 25 value
+                logger.debug(f"[{symbol}] Non-Crypto Fail: H1 ADX ({adx_value:.2f}) is below 25.")
+                continue
+        else:
+            logger.debug(f"[{symbol}] Skipping ADX check for Crypto symbol.")
+        # --- END OF HYBRID ADX FILTER ---
         # 5. RSI Alignment
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
 
@@ -630,9 +636,30 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
 
         # 7. Pullback to M5 EMA8
-        if not ((h1_trend_bias == "BUY" and last_closed_candle['close'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] >= last_closed_candle['M5_EMA8'])):
-            logger.debug(f"[{symbol}] Condition Fail: No body-based pullback to the EMA8 was found.")
+        # In bookStrategyLive3.py's check_for_new_signals function...
+
+        # ... (all filters up to the pullback check) ...
+
+        # --- NEW HYBRID PULLBACK LOGIC ---
+        is_crypto = symbol in CRYPTO_SYMBOLS
+        pullback_found = False
+
+        if is_crypto:
+            # For Crypto, use the sensitive WICK-BASED pullback
+            logger.debug(f"[{symbol}] Applying WICK-based pullback logic for Crypto.")
+            pullback_found = (h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or \
+                             (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8'])
+        else:
+            # For all other assets, use the robust BODY-BASED pullback
+            logger.debug(f"[{symbol}] Applying BODY-based pullback logic for non-Crypto.")
+            pullback_found = (h1_trend_bias == "BUY" and last_closed_candle['close'] <= last_closed_candle['M5_EMA8']) or \
+                             (h1_trend_bias == "SELL" and last_closed_candle['close'] >= last_closed_candle['M5_EMA8'])
+        
+        if not pullback_found:
             continue
+        # --- END OF HYBRID LOGIC ---
+
+        # ... (The rest of your filters and signal logic continue here) ...
 
         # 8. Exhaustion Candle Check
         recent_candles = df.iloc[-6:-2]; bullish_count = (recent_candles['close'] > recent_candles['open']).sum(); bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
@@ -647,14 +674,31 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         fib_levels = calculate_fib_levels(swing_high, swing_low); tolerance = 0.5 * last_closed_candle['ATR']
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
 
+
+        atr_val = last_closed_candle.get('ATR')
+        if pd.isna(atr_val) or atr_val <= 0:
+            continue
+
+
+        # --- Hybrid Stop Loss Logic ---
+        if is_crypto:
+            # For Crypto, use a 3.0x ATR Stop Loss
+            sl_distance_atr = 2.5 * atr_val
+        else:
+            # For all other assets, use the robust 4.0x ATR Stop Loss
+            sl_distance_atr = 4.0 * atr_val
+
+
         # --- Entry and SL calculation ---
-        entry_lookback = df.iloc[-4:-1]; entry_px, sl_px = (0,0)
+        entry_lookback = df.iloc[-4:-1]; 
+        entry_px, sl_px = (0,0)
         if h1_trend_bias == "BUY":
             entry_px = entry_lookback['high'].max() + pip_adj
-            sl_px = entry_px - (4.0 * last_closed_candle['ATR'])
+            sl_px = entry_px - sl_distance_atr
         else: # SELL
             entry_px = entry_lookback['low'].min() - pip_adj
-            sl_px = entry_px + (4.0 * last_closed_candle['ATR'])
+            sl_px = entry_px + sl_distance_atr
+
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
 
         # --- Final Checks & Queue ---

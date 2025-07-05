@@ -61,7 +61,7 @@ CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
 
-
+CRYPTO_SYMBOLS = list(CRYPTO_SESSIONS_USER.keys())
 INITIAL_ACCOUNT_BALANCE = 200.00
 RISK_PER_TRADE_PERCENT = 0.01 # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
@@ -478,6 +478,37 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
     combined_df.dropna(inplace=True)
     return combined_df
 
+def is_pin_bar(candle, bias):
+    """
+    Identifies if a candle is a valid rejection pin bar.
+    - The wick should be at least 2x the size of the body.
+    - The close should be within the top/bottom third of the candle.
+    """
+    body = abs(candle['open'] - candle['close'])
+    total_range = candle['high'] - candle['low']
+
+    # Avoid division by zero on doji candles
+    if body == 0 or total_range == 0:
+        return False
+
+    if bias == "BUY":
+        # Bullish Pin Bar (Hammer)
+        lower_wick = candle['open'] - candle['low'] if candle['open'] > candle['close'] else candle['close'] - candle['low']
+        # Rule 1: Lower wick must be at least 2x the body size
+        # Rule 2: The close must be in the top 1/3 of the candle's range
+        is_bullish_pin = (lower_wick >= 2 * body) and (candle['close'] > (candle['high'] - total_range / 3))
+        return is_bullish_pin
+        
+    elif bias == "SELL":
+        # Bearish Pin Bar (Shooting Star)
+        upper_wick = candle['high'] - candle['close'] if candle['open'] > candle['close'] else candle['high'] - candle['open']
+        # Rule 1: Upper wick must be at least 2x the body size
+        # Rule 2: The close must be in the bottom 1/3 of the candle's range
+        is_bearish_pin = (upper_wick >= 2 * body) and (candle['close'] < (candle['low'] + total_range / 3))
+        return is_bearish_pin
+        
+    return False
+
 
 # --- Main Execution ---
 if __name__ == "__main__":
@@ -715,7 +746,7 @@ if __name__ == "__main__":
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
                                     "ts_trigger_atr_multiple": 1.5,
-                                    "ts_next_atr_level": 1.0,
+                                    "ts_next_atr_level": 1.5,
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
@@ -822,12 +853,18 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and not (rsi_m5 > 50 and rsi_h1 > 50)) or \
                            (m5_setup_bias_setup == "SELL" and not (rsi_m5 < 50 and rsi_h1 < 50)): continue
 
-                        # --- ADX TREND STRENGTH FILTER ---
-                        adx_value = previous_candle.get('ADX_14', 0)
-                        if adx_value < 20:
-                            # Log message corrected to match the code's value of 20
-                            logger.debug(f"[{sym_to_check_setup}] Condition Fail: ADX ({adx_value:.2f}) is below 20. Trend not strong enough.")
-                            continue
+                         # --- NEW HYBRID ADX FILTER ---
+                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
+
+                        # Only apply the ADX filter if the symbol is NOT a crypto asset
+                        if not is_crypto:
+                            adx_value = previous_candle.get('H1_ADX', 0) # Assuming you use H1 ADX
+                            if pd.isna(adx_value) or adx_value < 25: # Using the robust 25 value
+                                logger.debug(f"[{sym_to_check_setup}] Non-Crypto Fail: H1 ADX ({adx_value:.2f}) is below 25.")
+                                continue
+                        else:
+                            logger.debug(f"[{sym_to_check_setup}] Skipping ADX check for Crypto symbol.")
+                        # --- END OF HYBRID ADX FILTER ---
                         
                         # ✅ Step 3: Add the Conditional Volume Filter in the Main Loop
                         # --- NEW: CONDITIONAL VOLUME FILTER FOR STOCKS (Replaces previous volume filter) ---
@@ -847,9 +884,30 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
                            (m5_setup_bias_setup == "SELL" and previous_candle['close'] > m5_ema21_val): continue
                         
-                        pullback = (m5_setup_bias_setup == "BUY" and previous_candle['close'] <= m5_ema8) or \
-                                   (m5_setup_bias_setup == "SELL" and previous_candle['close'] >= m5_ema8)
-                        if not pullback: continue
+                        # In bookMinLotBacktesteFinal.py's main loop...
+
+                        # ... (all filters up to the pullback check) ...
+                        
+                        # --- NEW HYBRID PULLBACK LOGIC ---
+                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
+                        pullback_found = False
+
+                        if is_crypto:
+                            # For Crypto, use the sensitive WICK-BASED pullback
+                            logger.debug(f"[{sym_to_check_setup}] Applying WICK-based pullback logic for Crypto.")
+                            pullback_found = (m5_setup_bias_setup == "BUY" and previous_candle['low'] <= m5_ema8) or \
+                                            (m5_setup_bias_setup == "SELL" and previous_candle['high'] >= m5_ema8)
+                        else:
+                            # For all other assets (Forex, Stocks, etc.), use the robust BODY-BASED pullback
+                            logger.debug(f"[{sym_to_check_setup}] Applying BODY-based pullback logic for non-Crypto.")
+                            pullback_found = (m5_setup_bias_setup == "BUY" and previous_candle['close'] <= m5_ema8) or \
+                                            (m5_setup_bias_setup == "SELL" and previous_candle['close'] >= m5_ema8)
+                        
+                            if not pullback_found:
+                                    continue
+                        # --- END OF HYBRID LOGIC ---
+
+                    # ... (The rest of your filters and signal logic continue here) ...
                         
                         if current_idx < 4: continue
                         
@@ -893,10 +951,20 @@ if __name__ == "__main__":
                             continue
                         
                         lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
+                         # --- NEW HYBRID STOP LOSS LOGIC ---
+                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
                         
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
                         
-                        sl_distance_atr = 4.0 * atr_val
+                        if is_crypto:
+                            # For Crypto, use a 3.0x ATR Stop Loss
+                            logger.debug(f"[{sym_to_check_setup}] Applying 3.0x ATR SL for Crypto.")
+                            sl_distance_atr = 2.5 * atr_val
+                        else:
+                            # For all other assets, use the robust 4.0x ATR Stop Loss
+                            logger.debug(f"[{sym_to_check_setup}] Applying 4.0x ATR SL for non-Crypto.")
+                            sl_distance_atr = 4.0 * atr_val
+
                         entry_px, sl_px = (0, 0)
                         
                         if m5_setup_bias_setup == "BUY":
