@@ -651,46 +651,54 @@ if __name__ == "__main__":
                         log_backtest_trade_to_csv(global_active_trade)
                         global_active_trade = None
                     
+                    # =========================================================================
+                    # === START: VOLATILITY-ADAPTIVE TRAILING STOP LOGIC (REPLACEMENT BLOCK) ===
+                    # =========================================================================
                     elif global_active_trade:
-                        atr_val = current_candle.get('ATR', np.nan)
+                        
+                        # Get the necessary values from the current candle
+                        atr_val = current_candle.get('ATR', np.nan) # We need the current ATR
+                        
                         if not (pd.isna(atr_val) or atr_val <= 0):
-                            move_from_entry = (
-                                current_candle['high'] - global_active_trade['entry_price']
-                                if global_active_trade['type'] == "BUY"
-                                else global_active_trade['entry_price'] - current_candle['low']
-                            )
+                            # Define our TSL parameters (these should match your live bot)
+                            TRAIL_ACTIVATION_ATR = 1.5 # Start trailing when price moves 1.5x the initial risk ATR
+                            TRAIL_DISTANCE_ATR = 3.0   # Trail the stop 3.0x *current* ATR behind the price
+                            
+                            # Calculate how far the trade has moved in terms of the initial risk
+                            # Note: The initial risk was based on the ATR at the time of entry.
+                            # We use `r_value_price_diff` which stored that initial risk distance.
+                            move_from_entry_price = (current_candle['high'] - global_active_trade['entry_price']) if global_active_trade['type'] == "BUY" else (global_active_trade['entry_price'] - current_candle['low'])
+                            atr_movement_from_risk = move_from_entry_price / global_active_trade['r_value_price_diff'] if global_active_trade['r_value_price_diff'] > 0 else 0
 
-                            atr_movement = move_from_entry / atr_val
+                            # Check if the TSL should be activated for the first time
+                            if not global_active_trade['trailing_active'] and atr_movement_from_risk >= TRAIL_ACTIVATION_ATR:
+                                global_active_trade['trailing_active'] = True
+                                logger.info(f"[{trade_symbol}] {timestamp} TSL ACTIVATED for trade.")
 
-                            if atr_movement >= global_active_trade['ts_next_atr_level']:
-                                if not global_active_trade['trailing_active']:
-                                    global_active_trade['trailing_active'] = True
-                                    logger.info(f"[{trade_symbol}] {timestamp} Trailing Stop ACTIVATED at {global_active_trade['ts_next_atr_level']:.2f} ATR.")
-                                else:
-                                    logger.info(f"[{trade_symbol}] {timestamp} TSL Update Triggered at {global_active_trade['ts_next_atr_level']:.2f} ATR.")
+                            # If the TSL is active, we check to move it on every candle
+                            if global_active_trade['trailing_active']:
+                                new_sl_price = 0
+                                
+                                if global_active_trade['type'] == "BUY":
+                                    potential_new_sl = current_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
+                                    # Ensure the new SL is an improvement (moves up)
+                                    if potential_new_sl > global_active_trade['sl']:
+                                        new_sl_price = potential_new_sl
+                                
+                                else: # SELL trade
+                                    potential_new_sl = current_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
+                                    # Ensure the new SL is an improvement (moves down)
+                                    if potential_new_sl < global_active_trade['sl']:
+                                        new_sl_price = potential_new_sl
 
-                                symbol_df_for_tsl = prepared_symbol_data[trade_symbol]
-                                try:
-                                    current_idx = symbol_df_for_tsl.index.get_loc(timestamp)
-                                    if current_idx >= 3:
-                                        last_3 = symbol_df_for_tsl.iloc[max(0, current_idx - 3): current_idx]
-                                        if not last_3.empty:
-                                            new_sl = 0
-                                            if global_active_trade['type'] == "BUY":
-                                                new_sl = last_3['low'].min() - 2 * props['pip_value_calc']
-                                                if new_sl > global_active_trade['sl']:
-                                                    global_active_trade['sl'] = round(new_sl, props['digits'])
-                                            else:
-                                                new_sl = last_3['high'].max() + 2 * props['pip_value_calc']
-                                                if new_sl < global_active_trade['sl']:
-                                                    global_active_trade['sl'] = round(new_sl, props['digits'])
-
-                                            logger.debug(f"[{trade_symbol}] SL updated to {global_active_trade['sl']:.{props['digits']}f} after {global_active_trade['ts_next_atr_level']:.2f} ATR move.")
-
-                                except KeyError:
-                                    logger.warning(f"{timestamp} not found in {trade_symbol} df for trailing update.")
-
-                                global_active_trade['ts_next_atr_level'] += 0.5
+                                # If a valid new SL price was calculated, update the trade's SL
+                                if new_sl_price > 0:
+                                    rounded_new_sl = round(new_sl_price, props['digits'])
+                                    logger.debug(f"[{trade_symbol}] TSL Update: Moving SL from {global_active_trade['sl']:.{props['digits']}f} to {rounded_new_sl:.{props['digits']}f}")
+                                    global_active_trade['sl'] = rounded_new_sl
+                    # =======================================================================
+                    # === END: VOLATILITY-ADAPTIVE TRAILING STOP LOGIC (REPLACEMENT BLOCK) ===
+                    # =======================================================================
             
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
@@ -745,8 +753,8 @@ if __name__ == "__main__":
                                     "initial_sl": sl_price_pending, "tp": tp_price, "r_value_price_diff": risk_val_diff,
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
-                                    "ts_trigger_atr_multiple": 1.5,
-                                    "ts_next_atr_level": 2.0,
+                                    "ts_trigger_atr_multiple": 1.5, # Unused, kept for structure
+                                    "ts_next_atr_level": 2.0, # Unused, kept for structure
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:

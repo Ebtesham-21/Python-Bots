@@ -2,11 +2,11 @@ TicketID,PositionID,Symbol,Type,OpenTimeUTC,EntryPrice,LotSize,SL_Price,TP_Price
 788450096,788450096,ETHUSD,BUY,2025-06-29T09:29:42+00:00,2449.35,0.1,2442.65,2476.15,2025-06-29T09:59:26+00:00,2447.09,-0.53,LiveBot_v1_Delay,Closed by broker: [sl 2447.09000],0.67
 788553561,788553561,ETHUSD,BUY,2025-06-29T10:22:25+00:00,2457.93,0.1,2447.5,2499.65,2025-06-29T12:06:42+00:00,2459.13,-0.18,LiveBot_v1_Delay,Closed by broker: [sl 2459.13000],1.04
 
---- Performance Summary ---,Generated: 2025-07-05T14:54:08.723267+00:00 ---
+--- Performance Summary ---,Generated: 2025-07-06T08:49:10.190001+00:00 ---
 Metric,Value
 Total Closed Trades,2
 Winning Trades,0
 Losing Trades,2
 Total PNL (Account CCY),-0.71
 Max Drawdown (USD),0.71
-Max Drawdown (%),0.38%
+Max Drawdown (%),0.39%

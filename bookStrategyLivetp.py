@@ -515,32 +515,54 @@ def manage_open_positions():
             trade_data = {"TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol, "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL", "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(), "EntryPrice": position.price_open, "LotSize": position.volume, "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "", "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "", "RiskedAmount": f"{risk_amount:.2f}"}
             append_trade_to_csv(trade_data)
             logged_open_position_ids.add(pos_id_str)
-            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 2.0}
+            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, }
             continue
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
         df, last_closed_candle = fetch_latest_data(position.symbol)
         if df is None or last_closed_candle is None:
-            logger.warning(f"Could not get valid closed candle data for managing position {position.ticket}. Skipping this cycle.")
+            logger.warning(f"Could not get data for TSL on position {position.ticket}. Skipping.")
             continue
+
         atr_val = last_closed_candle.get('ATR', np.nan)
         if pd.isna(atr_val) or atr_val <= 0: continue
-        move_from_entry = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
-        atr_movement = move_from_entry / atr_val
-        if atr_movement >= details['ts_next_atr_level']:
-            props = ALL_SYMBOL_PROPERTIES[position.symbol]; last_3_closed = df.iloc[-4:-1]; new_sl = 0
-            if position.type == mt5.ORDER_TYPE_BUY:
-                new_sl = last_3_closed['low'].min() - 2 * props['pip_value_calc']
-                if new_sl > details['current_sl']:
-                    logger.info(f"[{position.symbol}] Trailing SL for BUY {position.ticket}. New SL: {new_sl:.{props['digits']}f}")
-                    if modify_position_sltp(position, round(new_sl, props['digits']), position.tp): details['current_sl'] = new_sl
-            else:
-                new_sl = last_3_closed['high'].max() + 2 * props['pip_value_calc']
-                if new_sl < details['current_sl']:
-                    logger.info(f"[{position.symbol}] Trailing SL for SELL {position.ticket}. New SL: {new_sl:.{props['digits']}f}")
-                    if modify_position_sltp(position, round(new_sl, props['digits']), position.tp): details['current_sl'] = new_sl
-            details['ts_next_atr_level'] += 0.5
+            
+        # Define our TSL parameters
+        TRAIL_ACTIVATION_ATR = 1.5 # Start trailing when price moves 1.5x the initial risk ATR
+        TRAIL_DISTANCE_ATR = 3.0   # Trail the stop 3.0x *current* ATR behind the price
+        
+        # Calculate how far the trade has moved in terms of the initial risk
+        initial_risk_price_diff = abs(position.price_open - details['original_sl'])
+        move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
+        atr_movement_from_risk = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
 
+        # Check if the TSL should be activated for the first time
+        if not details['trailing_active'] and atr_movement_from_risk >= TRAIL_ACTIVATION_ATR:
+            details['trailing_active'] = True
+            logger.info(f"[{position.symbol}] TSL ACTIVATED for position {position.ticket}.")
+
+        # If the TSL is active, we check to move it on every candle
+        if details['trailing_active']:
+            new_sl_price = 0
+            
+            if position.type == mt5.ORDER_TYPE_BUY:
+                potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
+                if potential_new_sl > details['current_sl']:
+                    new_sl_price = potential_new_sl
+            
+            else: # SELL trade
+                potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
+                if potential_new_sl < details['current_sl']:
+                    new_sl_price = potential_new_sl
+
+            # If a valid new SL price was calculated, modify the position
+            if new_sl_price > 0:
+                props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                rounded_new_sl = round(new_sl_price, props['digits'])
+                logger.info(f"[{position.symbol}] TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
+                if modify_position_sltp(position, rounded_new_sl, position.tp):
+                    details['current_sl'] = rounded_new_sl # Update the state only on successful modification
+        # === END OF NEW TSL LOGIC ===
 def manage_pending_orders():
     pending_orders = mt5.orders_get(magic=202405)
     if not pending_orders: return
