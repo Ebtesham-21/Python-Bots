@@ -515,7 +515,7 @@ def manage_open_positions():
             trade_data = {"TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol, "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL", "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(), "EntryPrice": position.price_open, "LotSize": position.volume, "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "", "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "", "RiskedAmount": f"{risk_amount:.2f}"}
             append_trade_to_csv(trade_data)
             logged_open_position_ids.add(pos_id_str)
-            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 1.5}
+            trade_details_for_closure[pos_id_str] = {'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'ts_next_atr_level': 2.0}
             continue
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
@@ -683,7 +683,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # --- Hybrid Stop Loss Logic ---
         if is_crypto:
             # For Crypto, use a 3.0x ATR Stop Loss
-            sl_distance_atr = 2.5 * atr_val
+            sl_distance_atr = 3.0 * atr_val
         else:
             # For all other assets, use the robust 4.0x ATR Stop Loss
             sl_distance_atr = 4.0 * atr_val

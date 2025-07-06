@@ -746,7 +746,7 @@ if __name__ == "__main__":
                                     "status": "OPEN", "lot_size": lot_size_pending, "pnl_currency": 0.0,
                                     "commission": 0.0, "trailing_active": False,
                                     "ts_trigger_atr_multiple": 1.5,
-                                    "ts_next_atr_level": 1.5,
+                                    "ts_next_atr_level": 2.0,
                                 }
                                 logger.info(f"  [{order_symbol}] Trade OPEN: {global_active_trade['type']} @{global_active_trade['entry_price']:.{props['digits']}f}, SL:{global_active_trade['sl']:.{props['digits']}f}, TP:{global_active_trade['tp']:.{props['digits']}f}, R-dist: {risk_val_diff:.{props['digits']}f}")
                                 if order_symbol not in symbol_conceptual_start_balances:
@@ -959,7 +959,7 @@ if __name__ == "__main__":
                         if is_crypto:
                             # For Crypto, use a 3.0x ATR Stop Loss
                             logger.debug(f"[{sym_to_check_setup}] Applying 3.0x ATR SL for Crypto.")
-                            sl_distance_atr = 2.5 * atr_val
+                            sl_distance_atr = 3.0 * atr_val
                         else:
                             # For all other assets, use the robust 4.0x ATR Stop Loss
                             logger.debug(f"[{sym_to_check_setup}] Applying 4.0x ATR SL for non-Crypto.")
