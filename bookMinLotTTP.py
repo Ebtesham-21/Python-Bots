@@ -9,6 +9,7 @@ import math
 import matplotlib.pyplot as plt # Added for plotting
 import csv # ✅ Step 1: Import the Required Modules
 import os # ✅ Step 1: Import the Required Modules
+from scipy.signal import argrelextrema # <-- ADDED IMPORT
 
 # --- Logger Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -188,6 +189,48 @@ def is_within_session(candle_time_utc, symbol_sessions):
     for start_hour, end_hour in symbol_sessions:
         if start_hour <= candle_hour < end_hour: return True
     return False
+
+# --- NEW HELPER FUNCTIONS ---
+def get_swing_points(df, order=5):
+    """
+    Finds swing high and low points in a dataframe.
+    'order' determines how many points on each side must be lower/higher.
+    """
+    high_indices = argrelextrema(df['high'].values, np.greater_equal, order=order)[0]
+    low_indices = argrelextrema(df['low'].values, np.less_equal, order=order)[0]
+    
+    # Return the actual price levels at those indices
+    return df['high'].iloc[high_indices], df['low'].iloc[low_indices]
+
+def get_dynamic_tp(entry_price, sl_price, trade_type, swing_levels):
+    """
+    Calculates the first valid TP that is at least 2.0R away.
+    """
+    initial_risk_dollars = abs(entry_price - sl_price)
+    if initial_risk_dollars == 0:
+        return None, None
+
+    # Sort potential targets to find the closest one first
+    if trade_type == 'BUY':
+        # For a BUY, targets are swing highs ABOVE our entry
+        potential_targets = sorted([level for level in swing_levels if level > entry_price])
+    else: # SELL
+        # For a SELL, targets are swing lows BELOW our entry
+        potential_targets = sorted([level for level in swing_levels if level < entry_price], reverse=True)
+
+    # Find the first target that meets our minimum R:R criteria
+    for target_price in potential_targets:
+        reward_dollars = abs(target_price - entry_price)
+        r_multiple = reward_dollars / initial_risk_dollars
+        
+        if r_multiple >= 2.0:
+            # We found our target! Return the price and the R-value.
+            return target_price, r_multiple
+
+    # If no suitable target was found after checking all swings
+    return None, None
+# --- END OF NEW HELPER FUNCTIONS ---
+
 
 # ✅ Step 1: Define the Pullback Measurement Logic
 def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
@@ -426,7 +469,7 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
 
     # --- M5 Data --- (MODIFIED from M1 to M5)
     df_m5 = get_historical_data(symbol, mt5.TIMEFRAME_M5, start_date, end_date)
-    if df_m5.empty: return pd.DataFrame()
+    if df_m5.empty: return {} # Return empty dict if no M5 data
     df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
     df_m5['M5_EMA13'] = ta.ema(df_m5['close'], length=13)
     df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
@@ -475,8 +518,13 @@ def prepare_symbol_data(symbol, start_date, end_date, symbol_props):
                                 left_index=True, right_index=True,
                                 direction='backward', tolerance=pd.Timedelta(hours=4))
 
+    # === MODIFIED: RETURN A DICTIONARY ===
     combined_df.dropna(inplace=True)
-    return combined_df
+    # Return a dictionary to hold all prepared dataframes
+    return {
+        "M5_combined": combined_df,
+        "H1_data": df_h1 
+    }
 
 def is_pin_bar(candle, bias):
     """
@@ -551,21 +599,23 @@ if __name__ == "__main__":
         logger.info("--- NEW: Setups are queued and confirmed 2 candles later before placing a pending order.")
 
 
+        # === MODIFIED: Handle the new data dictionary structure ===
         prepared_symbol_data = {}
         master_time_index_set = set()
         for sym in SYMBOLS_AVAILABLE_FOR_TRADE:
             props = ALL_SYMBOL_PROPERTIES[sym]
-            df = prepare_symbol_data(sym, data_fetch_start_date, end_datetime, props)
-            if not df.empty:
-                df_filtered_for_index = df[(df.index >= pd.Timestamp(start_datetime, tz='UTC')) & (df.index <= pd.Timestamp(end_datetime, tz='UTC'))]
+            data_dict = prepare_symbol_data(sym, data_fetch_start_date, end_datetime, props)
+            if data_dict and not data_dict['M5_combined'].empty:
+                df_filtered_for_index = data_dict['M5_combined'][(data_dict['M5_combined'].index >= pd.Timestamp(start_datetime, tz='UTC')) & (data_dict['M5_combined'].index <= pd.Timestamp(end_datetime, tz='UTC'))]
                 if not df_filtered_for_index.empty:
-                    prepared_symbol_data[sym] = df
+                    prepared_symbol_data[sym] = data_dict # Store the entire dictionary
                     master_time_index_set.update(df_filtered_for_index.index)
                 else:
                     logger.warning(f"No data for {sym} within the backtest period {start_datetime} - {end_datetime} after initial buffer fetch. Skipping.")
             else:
                 logger.warning(f"No data prepared for {sym}, it will be skipped in simulation.")
-
+        # === END MODIFICATION ===
+        
         if not master_time_index_set:
             logger.error("No data available for any symbol in the specified range for master time index. Exiting.")
             shutdown_mt5_interface()
@@ -587,9 +637,10 @@ if __name__ == "__main__":
             if global_active_trade:
                 trade_symbol = global_active_trade['symbol']
                 props = ALL_SYMBOL_PROPERTIES[trade_symbol]
-
-                if trade_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[trade_symbol].index:
-                    current_candle = prepared_symbol_data[trade_symbol].loc[timestamp]
+                
+                # Access M5 combined data for trade management
+                if trade_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[trade_symbol]['M5_combined'].index:
+                    current_candle = prepared_symbol_data[trade_symbol]['M5_combined'].loc[timestamp]
                     
                     exit_price = 0
                     
@@ -661,8 +712,8 @@ if __name__ == "__main__":
                         
                         if not (pd.isna(atr_val) or atr_val <= 0):
                             # Define our TSL parameters (these should match your live bot)
-                            TRAIL_ACTIVATION_ATR = 1.5 # Start trailing when price moves 1.5x the initial risk ATR
-                            TRAIL_DISTANCE_ATR = 3.0   # Trail the stop 3.0x *current* ATR behind the price
+                            TRAIL_ACTIVATION_ATR = 1.0 # Start trailing when price moves 1.5x the initial risk ATR
+                            TRAIL_DISTANCE_ATR = 2.0   # Trail the stop 3.0x *current* ATR behind the price
                             
                             # Calculate how far the trade has moved in terms of the initial risk
                             # Note: The initial risk was based on the ATR at the time of entry.
@@ -703,8 +754,8 @@ if __name__ == "__main__":
             if not global_active_trade and global_pending_order:
                 order_symbol = global_pending_order['symbol']
                 props = ALL_SYMBOL_PROPERTIES[order_symbol]
-                if order_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[order_symbol].index:
-                    current_candle_for_pending_order = prepared_symbol_data[order_symbol].loc[timestamp]
+                if order_symbol in prepared_symbol_data and timestamp in prepared_symbol_data[order_symbol]['M5_combined'].index:
+                    current_candle_for_pending_order = prepared_symbol_data[order_symbol]['M5_combined'].loc[timestamp]
                     entry_price_pending = global_pending_order['entry_price']
                     sl_price_pending = global_pending_order['sl_price']
                     order_type_pending = global_pending_order['type']
@@ -745,8 +796,10 @@ if __name__ == "__main__":
                                 daily_risk_allocated_on_current_date -= global_pending_order['intended_risk_amount']
                                 global_pending_order = None
                             else:
-                                tp_price = actual_entry_price + (4 * risk_val_diff) if order_type_pending=="BUY_STOP" else actual_entry_price - (4 * risk_val_diff)
+                                # === MODIFIED: Use the TP from the pending order ===
+                                tp_price = global_pending_order['tp_price']
                                 tp_price = round(tp_price, props['digits'])
+                                
                                 global_active_trade = {
                                     "symbol": order_symbol, "type": "BUY" if order_type_pending=="BUY_STOP" else "SELL",
                                     "entry_time": timestamp, "entry_price": actual_entry_price, "sl": sl_price_pending,
@@ -787,11 +840,7 @@ if __name__ == "__main__":
                                 delayed_setups_queue.append(setup) # Put back in queue for next tick
                                 continue
                             
-                            # === USER'S SPECIFIC CHANGE APPLIED HERE ===
-                            # Confirmation Filter 1: Price-based invalidation is REMOVED as requested.
-                            # We now trust the original signal.
-                            
-                            # Confirmation Filter 2: Check risk budget (Still important)
+                            # Confirmation Filter: Check risk budget (Still important)
                             if daily_risk_allocated_on_current_date + setup["risk_amt"] > max_daily_risk_budget_for_current_date + 1e-9:
                                 logger.info(f"[{setup['symbol']}] {timestamp} Delayed setup confirmed, but Portfolio Daily Risk Limit would be exceeded. Dropping setup.")
                                 continue # Drop this setup and check the next one
@@ -803,12 +852,14 @@ if __name__ == "__main__":
                             props_pending = ALL_SYMBOL_PROPERTIES[setup['symbol']]
                             order_type = "BUY_STOP" if setup['bias'] == "BUY" else "SELL_STOP"
 
+                            # === MODIFIED: Pass tp_price to the pending order ===
                             global_pending_order = {
                                 "symbol": setup['symbol'], "type": order_type, "entry_price": setup['entry_price'],
                                 "sl_price": setup['sl_price'], "lot_size": setup['lot_size'], "setup_bias": setup['bias'],
-                                "creation_time": timestamp, "intended_risk_amount": setup['risk_amt']
+                                "creation_time": timestamp, "intended_risk_amount": setup['risk_amt'],
+                                "tp_price": setup['tp_price'] # Pass the TP along
                             }
-                            logger.info(f"[{setup['symbol']}] {timestamp} CONFIRMED setup converted to PENDING order. Type: {order_type}, Entry: {setup['entry_price']:.{props_pending['digits']}f}, SL: {setup['sl_price']:.{props_pending['digits']}f}")
+                            logger.info(f"[{setup['symbol']}] {timestamp} CONFIRMED setup converted to PENDING order. Type: {order_type}, Entry: {setup['entry_price']:.{props_pending['digits']}f}, SL: {setup['sl_price']:.{props_pending['digits']}f}, TP: {setup['tp_price']:.{props_pending['digits']}f}")
                             
                             # Put remaining setups from this tick back in queue and exit this loop (one pending order at a time)
                             remaining_setups = [s for s in setups_to_process_now if s != setup]
@@ -820,12 +871,16 @@ if __name__ == "__main__":
                     for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
                         
                         try:
-                            current_idx = prepared_symbol_data[sym_to_check_setup].index.get_loc(timestamp)
+                            # Use M5_combined data for signal checking
+                            current_idx = prepared_symbol_data[sym_to_check_setup]['M5_combined'].index.get_loc(timestamp)
                         except KeyError:
                             continue 
                         if current_idx < 1:
                             continue
-                        previous_candle = prepared_symbol_data[sym_to_check_setup].iloc[current_idx - 1]
+                            
+                        # Access the dataframe for the current symbol
+                        symbol_df = prepared_symbol_data[sym_to_check_setup]['M5_combined']
+                        previous_candle = symbol_df.iloc[current_idx - 1]
 
                         props_setup = ALL_SYMBOL_PROPERTIES[sym_to_check_setup]
                         if not is_within_session(timestamp, TRADING_SESSIONS_UTC.get(sym_to_check_setup,[])):
@@ -867,7 +922,7 @@ if __name__ == "__main__":
                         # Only apply the ADX filter if the symbol is NOT a crypto asset
                         if not is_crypto:
                             adx_value = previous_candle.get('H1_ADX', 0) # Assuming you use H1 ADX
-                            if pd.isna(adx_value) or adx_value < 25: # Using the robust 25 value
+                            if pd.isna(adx_value) or adx_value < 15: # Using the robust 25 value
                                 logger.debug(f"[{sym_to_check_setup}] Non-Crypto Fail: H1 ADX ({adx_value:.2f}) is below 25.")
                                 continue
                         else:
@@ -892,10 +947,6 @@ if __name__ == "__main__":
                         if (m5_setup_bias_setup == "BUY" and previous_candle['close'] < m5_ema21_val) or \
                            (m5_setup_bias_setup == "SELL" and previous_candle['close'] > m5_ema21_val): continue
                         
-                        # In bookMinLotBacktesteFinal.py's main loop...
-
-                        # ... (all filters up to the pullback check) ...
-                        
                         # --- NEW HYBRID PULLBACK LOGIC ---
                         is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
                         pullback_found = False
@@ -911,15 +962,11 @@ if __name__ == "__main__":
                             pullback_found = (m5_setup_bias_setup == "BUY" and previous_candle['close'] <= m5_ema8) or \
                                             (m5_setup_bias_setup == "SELL" and previous_candle['close'] >= m5_ema8)
                         
-                            if not pullback_found:
-                                    continue
+                        if not pullback_found:
+                                continue
                         # --- END OF HYBRID LOGIC ---
-
-                    # ... (The rest of your filters and signal logic continue here) ...
                         
                         if current_idx < 4: continue
-                        
-                        symbol_df = prepared_symbol_data[sym_to_check_setup]
                         
                         recent_candles_weakness = symbol_df.iloc[current_idx - 5 : current_idx - 1]
                         if len(recent_candles_weakness) < 4: continue
@@ -959,18 +1006,13 @@ if __name__ == "__main__":
                             continue
                         
                         lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
-                         # --- NEW HYBRID STOP LOSS LOGIC ---
-                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
                         
+                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
                         
                         if is_crypto:
-                            # For Crypto, use a 3.0x ATR Stop Loss
-                            logger.debug(f"[{sym_to_check_setup}] Applying 3.0x ATR SL for Crypto.")
-                            sl_distance_atr = 3.0 * atr_val
+                            sl_distance_atr = 4.0 * atr_val
                         else:
-                            # For all other assets, use the robust 4.0x ATR Stop Loss
-                            logger.debug(f"[{sym_to_check_setup}] Applying 4.0x ATR SL for non-Crypto.")
                             sl_distance_atr = 4.0 * atr_val
 
                         entry_px, sl_px = (0, 0)
@@ -986,20 +1028,52 @@ if __name__ == "__main__":
                         sl_px = round(sl_px, props_setup['digits'])
                         
                         if abs(entry_px - sl_px) <= 0: continue
+                        
+                        # ===============================================
+                        # === NEW: DYNAMIC TAKE PROFIT IMPLEMENTATION ===
+                        # ===============================================
 
+                        # 1. Get the H1 dataframe for this symbol
+                        h1_dataframe = prepared_symbol_data[sym_to_check_setup]['H1_data']
+                        if h1_dataframe.empty:
+                            logger.debug(f"[{sym_to_check_setup}] Skipped: H1 data not available for swing analysis.")
+                            continue
+
+                        # 2. Find swing points on the H1 chart
+                        swing_highs, swing_lows = get_swing_points(h1_dataframe, order=5)
+
+                        # 3. Determine the relevant targets based on trade direction
+                        targets = swing_highs if h1_trend_bias_setup == 'BUY' else swing_lows
+                        
+                        # 4. Calculate the dynamic TP and its R-value
+                        tp_price, r_value = get_dynamic_tp(entry_px, sl_px, h1_trend_bias_setup, targets)
+
+                        # 5. Filter the trade if no suitable TP is found
+                        if tp_price is None:
+                            logger.debug(f"[{sym_to_check_setup}] Skipped: No valid market structure TP found with at least 2R potential.")
+                            continue
+                        
+                        logger.info(f"[{sym_to_check_setup}] Valid TP found at {tp_price:.{props_setup['digits']}f} ({r_value:.2f}R potential).")
+
+                        tp_price = round(tp_price, props_setup['digits'])
+                        # === END OF DYNAMIC TP LOGIC ===
+
+                        # --- Final Checks & Queue ---
                         lot_size_fixed_min = props_setup.get("volume_min", 0.01)
                         estimated_risk_min_lot = lot_size_fixed_min * (abs(entry_px - sl_px) / props_setup['trade_tick_size']) * props_setup['trade_tick_value'] if props_setup['trade_tick_size'] > 0 else 0
                         if estimated_risk_min_lot <= 0: continue
-                        
+                            
                         max_allowed_risk_per_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
                         if estimated_risk_min_lot > max_allowed_risk_per_trade: continue
                         
+                        # === MODIFIED: Add tp_price to the queued setup ===
                         delayed_setups_queue.append({
                             "symbol": sym_to_check_setup, "timestamp": timestamp, "bias": m5_setup_bias_setup,
                             "entry_price": entry_px, "sl_price": sl_px, "lot_size": lot_size_fixed_min,
+                            "tp_price": tp_price, # Add the new dynamic TP
                             "risk_amt": estimated_risk_min_lot, "confirm_count": 0
                         })
-                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED. Bias: {m5_setup_bias_setup}, Entry: {entry_px}")
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED with Dynamic TP. Bias: {m5_setup_bias_setup}, Entry: {entry_px}, TP: {tp_price}")
 
 
         logger.info("\n\n===== All Symbol Simulations Complete. Generating Summaries. =====")
