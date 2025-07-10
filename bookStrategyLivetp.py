@@ -433,13 +433,13 @@ def fetch_latest_data(symbol):
     df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21)
     df_h1['RSI_H1'] = ta.rsi(df_h1['close'], length=14)
 
-    adx_m5 = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
-    if adx_m5 is not None and not adx_m5.empty:
-        df_m5['M5_ADX'] = adx_m5['ADX_14']
+    adx_h1 = ta.adx(df_h1['high'], df_h1['low'], df_h1['close'], length=14)
+    if adx_h1 is not None and not adx_h1.empty:
+        df_h1['H1_ADX'] = adx_h1['ADX_14']
     else:
-        df_m5['M5_ADX'] = np.nan # Handle case where ADX calculation fails
+        df_h1['H1_ADX'] = np.nan # Handle case where ADX calculation fails
 
-    df_m5.rename(columns={'close': 'H1_Close_For_Bias'}, inplace=True)
+    df_h1.rename(columns={'close': 'H1_Close_For_Bias'}, inplace=True)
 
     # M5 Indicators
     df_m5['M5_EMA8'] = ta.ema(df_m5['close'], length=8)
@@ -705,7 +705,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
         is_crypto = symbol in CRYPTO_SYMBOLS
         if not is_crypto:
-            adx_value = last_closed_candle.get('M5_ADX', 0)
+            adx_value = last_closed_candle.get('H1_ADX', 0)
             if pd.isna(adx_value) or adx_value < 20: continue
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
