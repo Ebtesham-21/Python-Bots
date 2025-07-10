@@ -79,11 +79,11 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[],
-                           "AUDJPY":[("4:30"), ("5:30")],   "EURNZD":[], "NZDUSD":[ ], "AUDUSD":[("4:30"), ("5:30") ], "USDCAD":[ ],"USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[("4:30"), ("5:30")], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[("4:30"), ("5:30")], "AUDCHF":[("4:30"), ("5:30")], "AUDNZD":[("4:30"), ("5:30")], "EURAUD":[("4:30"), ("5:30")],
-                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
-                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+"EURUSD":[ ("12:30")], "USDCHF":[("12:30")],   "GBPJPY":[], "GBPUSD":[("12:30")],
+                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[ ("12:30")], "AUDUSD":[("12:30") ], "USDCAD":[("12:30") ],"USDJPY":[ ("12:30")], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
+                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
+                       "USOIL":[("12:30")], "UKOIL":[], "XAUUSD":[("12:30")], "XAGUSD":[("12:30")],
+                       "BTCUSD":[("12:30")], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[("12:30")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
 
 }
@@ -599,8 +599,8 @@ def manage_open_positions():
         atr_val = last_closed_candle.get('ATR', np.nan)
         if pd.isna(atr_val) or atr_val <= 0: continue
             
-        TRAIL_ACTIVATION_ATR = 1.0
-        TRAIL_DISTANCE_ATR = 2.0
+        TRAIL_ACTIVATION_ATR = 0.5
+        TRAIL_DISTANCE_ATR = 1.5
         
         initial_risk_price_diff = abs(position.price_open - details['original_sl'])
         move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
@@ -702,11 +702,11 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
         m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
         if not ((h1_trend_bias == "BUY" and m5_fanned_buy) or (h1_trend_bias == "SELL" and m5_fanned_sell)): continue
-        if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
+        # if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
         is_crypto = symbol in CRYPTO_SYMBOLS
         if not is_crypto:
             adx_value = last_closed_candle.get('H1_ADX', 0)
-            if pd.isna(adx_value) or adx_value < 15: continue
+            if pd.isna(adx_value) or adx_value < 20: continue
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
         pullback_found = (h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8']) if is_crypto else (h1_trend_bias == "BUY" and last_closed_candle['close'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] >= last_closed_candle['M5_EMA8'])
