@@ -712,8 +712,8 @@ if __name__ == "__main__":
                         
                         if not (pd.isna(atr_val) or atr_val <= 0):
                             # Define our TSL parameters (these should match your live bot)
-                            TRAIL_ACTIVATION_ATR = 1.0 # Start trailing when price moves 1.5x the initial risk ATR
-                            TRAIL_DISTANCE_ATR = 2.0   # Trail the stop 3.0x *current* ATR behind the price
+                            TRAIL_ACTIVATION_ATR = 0.5 # Start trailing when price moves 1.5x the initial risk ATR
+                            TRAIL_DISTANCE_ATR = 1.5   # Trail the stop 3.0x *current* ATR behind the price
                             
                             # Calculate how far the trade has moved in terms of the initial risk
                             # Note: The initial risk was based on the ATR at the time of entry.
@@ -908,8 +908,8 @@ if __name__ == "__main__":
                         h4_ema8 = previous_candle.get('H4_EMA8', np.nan)
                         h4_ema21 = previous_candle.get('H4_EMA21', np.nan)
                         if pd.isna(h4_ema8) or pd.isna(h4_ema21): continue
-                        if (m5_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21) or \
-                           (m5_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21): continue
+                        # if (m5_setup_bias_setup == "BUY" and h4_ema8 < h4_ema21) or \
+                        #    (m5_setup_bias_setup == "SELL" and h4_ema8 > h4_ema21): continue
 
                         rsi_m5 = previous_candle.get('RSI_M5', np.nan); rsi_h1 = previous_candle.get('RSI_H1', np.nan)
                         if pd.isna(rsi_m5) or pd.isna(rsi_h1): continue
@@ -922,7 +922,7 @@ if __name__ == "__main__":
                         # Only apply the ADX filter if the symbol is NOT a crypto asset
                         if not is_crypto:
                             adx_value = previous_candle.get('H1_ADX', 0) # Assuming you use H1 ADX
-                            if pd.isna(adx_value) or adx_value < 15: # Using the robust 25 value
+                            if pd.isna(adx_value) or adx_value < 20: # Using the robust 25 value
                                 logger.debug(f"[{sym_to_check_setup}] Non-Crypto Fail: H1 ADX ({adx_value:.2f}) is below 25.")
                                 continue
                         else:
