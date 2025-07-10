@@ -921,7 +921,7 @@ if __name__ == "__main__":
 
                         # Only apply the ADX filter if the symbol is NOT a crypto asset
                         if not is_crypto:
-                            adx_value = previous_candle.get('H1_ADX', 0) # Assuming you use H1 ADX
+                            adx_value = previous_candle.get('ADX_14', 0) # Assuming you use H1 ADX
                             if pd.isna(adx_value) or adx_value < 20: # Using the robust 25 value
                                 logger.debug(f"[{sym_to_check_setup}] Non-Crypto Fail: H1 ADX ({adx_value:.2f}) is below 25.")
                                 continue
@@ -1038,6 +1038,15 @@ if __name__ == "__main__":
                         if h1_dataframe.empty:
                             logger.debug(f"[{sym_to_check_setup}] Skipped: H1 data not available for swing analysis.")
                             continue
+
+
+                        # --- THIS IS THE FIX ---
+                        # Create a slice of the H1 data that only includes candles up to the current M5 timestamp
+                        h1_data_up_to_now = h1_dataframe.loc[h1_dataframe.index <= timestamp]
+                        if len(h1_data_up_to_now) < (2 * 5 + 1): # Need enough data for argrelextrema(order=5)
+                            logger.debug(f"[{sym_to_check_setup}] Skipped: Not enough H1 history for swing analysis at {timestamp}.")
+                            continue
+                        # --- END OF FIX ---
 
                         # 2. Find swing points on the H1 chart
                         swing_highs, swing_lows = get_swing_points(h1_dataframe, order=5)
