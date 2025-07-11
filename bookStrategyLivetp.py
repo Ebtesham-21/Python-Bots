@@ -1,3 +1,5 @@
+# --- START OF FILE bookStrategyLivetp.py ---
+
 import MetaTrader5 as mt5
 import pandas as pd
 import pandas_ta as ta  # For EMAs, ATR, and ADX
@@ -79,11 +81,11 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ("12:30")], "USDCHF":[("12:30")],   "GBPJPY":[], "GBPUSD":[("12:30")],
-                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[ ("12:30")], "AUDUSD":[("12:30") ], "USDCAD":[("12:30") ],"USDJPY":[ ("12:30")], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
-                       "USOIL":[("12:30")], "UKOIL":[], "XAUUSD":[("12:30")], "XAGUSD":[("12:30")],
-                       "BTCUSD":[("12:30")], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[("12:30")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[("6:00")], "GBPUSD":[("6:00")],
+                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[ ("12:30")],"USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[("12:30")], "CADJPY":[("12:30")], "EURCAD":[("12:30")],
+                           "GBPCAD":[("6:00"), ("12:30")], "NZDCAD":[("12:30")], "GBPAUD":[("6:00")], "GBPNZD":[("6:00")], "GBPCHF":[("6:00")], "AUDCAD":[("12:30")], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
+                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
+                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
 
 }
@@ -94,7 +96,7 @@ CSV_HEADERS = ["TicketID", "PositionID", "Symbol", "Type", "OpenTimeUTC", "Entry
 "LotSize", "SL_Price", "TP_Price", "CloseTimeUTC", "ExitPrice",
 "PNL_AccountCCY", "OpenComment", "CloseReason", "RiskedAmount"]
 
-# --- CSV Helper Functions (unchanged) ---
+# --- CSV Helper Functions (unchanged from your version) ---
 
 def initialize_trade_history_file():
     if not os.path.exists(TRADE_HISTORY_FILE):
@@ -138,6 +140,10 @@ def load_state_from_csv():
                 'symbol': row['Symbol'],
                 'original_sl': float(row['SL_Price']),
                 'current_sl': float(row['SL_Price']),
+                 # --- NEW STATE: Initialize for loaded trades ---
+                'trailing_active': False, # Assume offensive TSL is not active on load
+                'defensive_tsl_active': False,
+                'invalid_signal_streak': 0,
             }
         logger.info(f"Loaded {len(logged_open_position_ids)} open positions' IDs from {TRADE_HISTORY_FILE}")
     except pd.errors.EmptyDataError:
@@ -261,6 +267,7 @@ def calculate_and_append_performance_summary(csv_filepath, session_initial_balan
     except Exception as e:
         logger.error(f"Error calculating or writing cumulative performance summary: {e}", exc_info=True)
 
+
 # --- MT5 Initialization and Shutdown (unchanged) ---
 
 def initialize_mt5_interface(symbols_to_check):
@@ -315,7 +322,7 @@ def shutdown_mt5_interface():
     mt5.shutdown()
     logger.info("MetaTrader 5 Shutdown")
 
-# --- Live Bot Helper Functions ---
+# --- Live Bot Helper Functions (unchanged) ---
 
 def is_weekend_utc():
     now_utc = datetime.now(timezone.utc)
@@ -360,7 +367,7 @@ def is_outside_news_blackout(symbol: str, news_times_map: dict) -> bool:
             continue
     return True
 
-# --- NEW: Helper functions for Dynamic Take Profit ---
+# --- NEW: Helper functions for Dynamic Take Profit (unchanged) ---
 def get_swing_points(df, order=5):
     """
     Finds swing high and low points in a dataframe.
@@ -393,6 +400,55 @@ def get_dynamic_tp(entry_price, sl_price, trade_type, swing_levels):
     return None, None
 # --- End of New Helpers ---
 
+# +++ NEW HELPER FUNCTION FOR DEFENSIVE TSL +++
+def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_df):
+    """
+    Re-checks the original entry conditions for an existing trade.
+    Returns True if the setup is still valid, False otherwise.
+    """
+    if last_closed_candle is None or full_m5_df is None: return False
+
+    # H1 Trend Bias Check
+    current_h1_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
+    if trade_type != current_h1_bias:
+        logger.debug(f"[{symbol}] Defensive Check FAIL: H1 bias ({current_h1_bias}) no longer matches trade type ({trade_type}).")
+        return False
+
+    # M5 Fanned EMAs Check
+    m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
+    m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
+    if not ((trade_type == "BUY" and m5_fanned_buy) or (trade_type == "SELL" and m5_fanned_sell)):
+        logger.debug(f"[{symbol}] Defensive Check FAIL: M5 EMAs are no longer fanned for {trade_type}.")
+        return False
+        
+    # ### MODIFIED ###: ADX Check (non-crypto) now uses M5_ADX to match the backtest
+    is_crypto = symbol in CRYPTO_SYMBOLS
+    if not is_crypto:
+        adx_value = last_closed_candle.get('M5_ADX', 0) # Changed from H1_ADX to M5_ADX
+        if pd.isna(adx_value) or adx_value < 20:
+            logger.debug(f"[{symbol}] Defensive Check FAIL: M5_ADX ({adx_value:.2f}) fell below 20.")
+            return False
+
+    # RSI Check (Corrected logic for SELL)
+    if trade_type == "BUY":
+        if not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50):
+            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for BUY.")
+            return False
+    elif trade_type == "SELL":
+        if not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50):
+            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for SELL.")
+            return False
+        
+    # Price vs M5 EMA21 (the core of the trend-following part)
+    if (trade_type == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (trade_type == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']):
+        logger.debug(f"[{symbol}] Defensive Check FAIL: Price crossed the M5_EMA21 against the trend.")
+        return False
+
+    # If all checks pass, the signal is still considered valid
+    return True
+
+
+
 def get_live_data(symbol, timeframe, count):
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
     if rates is None or len(rates) == 0:
@@ -414,14 +470,14 @@ def get_latest_m5_candle_time(reference_symbol):
         logger.error(f"Error in get_latest_m5_candle_time for '{reference_symbol}': {e}")
         return None
 
-# --- MODIFIED: fetch_latest_data now returns the H1 dataframe as well ---
+# --- MODIFIED: fetch_latest_data now returns the full M5 df as well ---
 def fetch_latest_data(symbol):
     df_h4 = get_live_data(symbol, mt5.TIMEFRAME_H4, 100)
     df_h1 = get_live_data(symbol, mt5.TIMEFRAME_H1, 100)
     df_m5 = get_live_data(symbol, mt5.TIMEFRAME_M5, 100)
     if df_h4.empty or df_h1.empty or df_m5.empty or len(df_m5) < 2:
         logger.warning(f"Could not fetch complete data for {symbol} or not enough M5 candles. Skipping analysis.")
-        return None, None, None
+        return None, None, None, None
 
     # H4 Indicators
     df_h4['H4_EMA8'] = ta.ema(df_h4['close'], length=8)
@@ -448,10 +504,27 @@ def fetch_latest_data(symbol):
     df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14)
 
+
+     # --- NEW: CALCULATE MOVING AVERAGE OF ATR FOR VOLATILITY REGIME ---
+    if 'ATR' in df_m5.columns and len(df_m5) >= 34: # Need enough data for ATR(14) + SMA(20)
+        df_m5['ATR_SMA20'] = ta.sma(df_m5['ATR'], length=20)
+    else:
+        df_m5['ATR_SMA20'] = np.nan
+    # --- END OF NEW CODE ---
+
+    # ### NEW ###: Calculate ADX on the M5 timeframe to match the backtest
+    adx_m5 = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
+    if adx_m5 is not None and not adx_m5.empty:
+        df_m5['M5_ADX'] = adx_m5['ADX_14']
+    else:
+        df_m5['M5_ADX'] = np.nan
+
     if 'tick_volume' in df_m5.columns and len(df_m5) >= 20:
         df_m5['volume_MA20'] = ta.sma(df_m5['tick_volume'], length=20)
     else:
         df_m5['volume_MA20'] = np.nan
+
+
 
     # Combine dataframes
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1[['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', 'RSI_H1', 'H1_ADX']].sort_index(),
@@ -463,11 +536,10 @@ def fetch_latest_data(symbol):
     combined_df.dropna(inplace=True)
     if combined_df.empty or len(combined_df) < 2:
         logger.warning(f"Not enough data for {symbol} after combining and cleaning. Skipping analysis.")
-        return None, None, None
+        return None, None, None, None
 
-    # Return the combined M5 df, the last closed M5 candle, AND the H1 df for TP calculation
-    return combined_df, combined_df.iloc[-2], df_h1
-
+    # Return the combined M5 df, the last closed M5 candle, the full M5 dataframe, AND the H1 df for TP calculation
+    return combined_df, combined_df.iloc[-2], df_m5, df_h1
 
 def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
     total_leg = abs(impulse_end - impulse_start)
@@ -537,33 +609,75 @@ def manage_closed_positions():
         logged_open_position_ids.remove(pos_id)
         if pos_id in trade_details_for_closure: del trade_details_for_closure[pos_id]
 
-# --- MODIFIED: manage_open_positions now applies the dynamic TP ---
+# +++ NEW HELPER FUNCTION FOR DEFENSIVE TSL +++
+def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_df):
+    """
+    Re-checks the original entry conditions for an existing trade.
+    Returns True if the setup is still valid, False otherwise.
+    """
+    if last_closed_candle is None or full_m5_df is None: return False
+
+    # H1 Trend Bias Check
+    current_h1_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
+    if trade_type != current_h1_bias:
+        logger.debug(f"[{symbol}] Defensive Check FAIL: H1 bias ({current_h1_bias}) no longer matches trade type ({trade_type}).")
+        return False
+
+    # M5 Fanned EMAs Check
+    m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
+    m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
+    if not ((trade_type == "BUY" and m5_fanned_buy) or (trade_type == "SELL" and m5_fanned_sell)):
+        logger.debug(f"[{symbol}] Defensive Check FAIL: M5 EMAs are no longer fanned for {trade_type}.")
+        return False
+        
+    
+    # ADX Check (non-crypto)
+    is_crypto = symbol in CRYPTO_SYMBOLS
+    if not is_crypto:
+        # CORRECTED: Use M5_ADX to be consistent with the entry signal logic
+        adx_value = last_closed_candle.get('M5_ADX', 0) 
+        if pd.isna(adx_value) or adx_value < 20:
+            logger.debug(f"[{symbol}] Defensive Check FAIL: M5_ADX ({adx_value:.2f}) fell below 20.")
+            return False
+
+    # RSI Check
+    if not ((trade_type == "BUY" and last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50) or (trade_type == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50))):
+        logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for {trade_type}.")
+        return False
+        
+    # Price vs M5 EMA21 (the core of the trend-following part)
+    if (trade_type == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (trade_type == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']):
+        logger.debug(f"[{symbol}] Defensive Check FAIL: Price crossed the M5_EMA21 against the trend.")
+        return False
+
+    # If all checks pass, the signal is still considered valid
+    return True
+
+# +++ FULLY REVISED manage_open_positions FUNCTION +++
+
 def manage_open_positions():
     open_positions = mt5.positions_get(magic=202405)
     if not open_positions: return
+
     for position in open_positions:
         pos_id_str = str(position.ticket)
 
-        # --- THIS BLOCK IS EXECUTED ONCE WHEN A NEW POSITION IS DETECTED ---
+        # --- BLOCK 1: NEW POSITION INITIALIZATION ---
         if pos_id_str not in logged_open_position_ids:
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
             tp_price = 0.0
 
-            # Try to retrieve the dynamically calculated TP stored when the order was placed
             pending_details = trade_details_for_closure.get(pos_id_str)
             if pending_details and pending_details.get("is_pending"):
                 tp_price = pending_details['tp_price']
                 logger.info(f"[{position.symbol}] New position {pos_id_str} detected. Applying dynamic TP: {tp_price}")
             else:
-                # Fallback for manually opened trades or state loss after a restart
                 logger.warning(f"[{position.symbol}] New position {pos_id_str} detected, but no pending TP details found. Applying fallback 4R TP.")
                 risk_val_diff = abs(position.price_open - position.sl)
                 tp_price = round(position.price_open + (4 * risk_val_diff) if position.type == mt5.ORDER_TYPE_BUY else position.price_open - (4 * risk_val_diff), props['digits'])
-            
-            # Apply the determined SL and TP to the position
+
             modify_position_sltp(position, position.sl, tp_price)
-            
-            # Log the trade to CSV
+
             risk_amount = (abs(position.price_open - position.sl) / props['trade_tick_size']) * props['trade_tick_value'] * position.volume if props['trade_tick_size'] > 0 else 0
             trade_data = {
                 "TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol,
@@ -575,64 +689,116 @@ def manage_open_positions():
                 "RiskedAmount": f"{risk_amount:.2f}"
             }
             append_trade_to_csv(trade_data)
-            
             logged_open_position_ids.add(pos_id_str)
             
-            # Overwrite the pending details with active trade management details
             trade_details_for_closure[pos_id_str] = {
                 'symbol': position.symbol,
                 'original_sl': position.sl,
                 'current_sl': position.sl,
                 'trailing_active': False,
+                'defensive_tsl_active': False,
+                'invalid_signal_streak': 0,
             }
-            continue # Skip to the next position, TSL will be checked next cycle
+            continue
 
-        # --- TRAILING STOP LOSS LOGIC (Unchanged) ---
+        # --- BLOCK 2: ONGOING POSITION MANAGEMENT ---
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
         
-        _, last_closed_candle, _ = fetch_latest_data(position.symbol)
+        _, last_closed_candle, full_m5_df, _ = fetch_latest_data(position.symbol)
         if last_closed_candle is None:
             logger.warning(f"Could not get data for TSL on position {position.ticket}. Skipping.")
             continue
 
+        # --- "Offensive Brain": Volatility-Adjusted TSL ---
         atr_val = last_closed_candle.get('ATR', np.nan)
-        if pd.isna(atr_val) or atr_val <= 0: continue
+        if pd.notna(atr_val) and atr_val > 0:
+            TRAIL_ACTIVATION_ATR = 0.5
+            TRAIL_DISTANCE_ATR = 1.5
             
-        TRAIL_ACTIVATION_ATR = 0.5
-        TRAIL_DISTANCE_ATR = 1.5
+            initial_risk_price_diff = abs(position.price_open - details['original_sl'])
+            # In live trading, the 'high' and 'low' of the last_closed_candle are final.
+            move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
+            atr_movement_from_risk = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
+
+            if not details['trailing_active'] and atr_movement_from_risk >= TRAIL_ACTIVATION_ATR:
+                details['trailing_active'] = True
+                logger.info(f"[{position.symbol}] OFFENSIVE TSL ACTIVATED for position {position.ticket}.")
+
+            if details['trailing_active']:
+                new_sl_price = 0
+                if position.type == mt5.ORDER_TYPE_BUY:
+                    potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
+                    if potential_new_sl > details['current_sl']:
+                        new_sl_price = potential_new_sl
+                else: # SELL trade
+                    potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
+                    if potential_new_sl < details['current_sl']:
+                        new_sl_price = potential_new_sl
+
+                if new_sl_price > 0:
+                    props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                    rounded_new_sl = round(new_sl_price, props['digits'])
+                    logger.info(f"[{position.symbol}] Offensive TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
+                    if modify_position_sltp(position, rounded_new_sl, position.tp):
+                        details['current_sl'] = rounded_new_sl
+                
+                continue
         
-        initial_risk_price_diff = abs(position.price_open - details['original_sl'])
-        move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
-        atr_movement_from_risk = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
+        # --- "Defensive Brain": Signal-Degradation SL Tightening ---
+        trade_type = "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL"
+        is_still_valid = is_trade_setup_still_valid(position.symbol, trade_type, last_closed_candle, full_m5_df)
 
-        if not details['trailing_active'] and atr_movement_from_risk >= TRAIL_ACTIVATION_ATR:
-            details['trailing_active'] = True
-            logger.info(f"[{position.symbol}] TSL ACTIVATED for position {position.ticket}.")
+        if is_still_valid:
+            if details['invalid_signal_streak'] > 0:
+                logger.info(f"[{position.symbol}] Signal for position {position.ticket} has become VALID again. Resetting defensive measures.")
+                details['invalid_signal_streak'] = 0
+                details['defensive_tsl_active'] = False
+        else:
+            details['invalid_signal_streak'] += 1
+            logger.warning(f"[{position.symbol}] Signal for position {position.ticket} is INVALID. Streak: {details['invalid_signal_streak']}/4.")
 
-        if details['trailing_active']:
-            new_sl_price = 0
-            if position.type == mt5.ORDER_TYPE_BUY:
-                potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
-                if potential_new_sl > details['current_sl']:
-                    new_sl_price = potential_new_sl
-            else: # SELL trade
-                potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
-                if potential_new_sl < details['current_sl']:
-                    new_sl_price = potential_new_sl
+            if not details['defensive_tsl_active'] and details['invalid_signal_streak'] >= 4:
+                details['defensive_tsl_active'] = True
+                logger.warning(f"[{position.symbol}] DEFENSIVE TSL ACTIVATED for position {position.ticket} after 4 consecutive invalid signals.")
 
-            if new_sl_price > 0:
-                props = ALL_SYMBOL_PROPERTIES[position.symbol]
-                rounded_new_sl = round(new_sl_price, props['digits'])
-                logger.info(f"[{position.symbol}] TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
-                if modify_position_sltp(position, rounded_new_sl, position.tp):
-                    details['current_sl'] = rounded_new_sl
+            if details['defensive_tsl_active']:
+                current_atr = last_closed_candle.get('ATR')
+                average_atr = last_closed_candle.get('ATR_SMA20')
+                tighten_percentage = 0.03
+
+                if pd.notna(current_atr) and pd.notna(average_atr):
+                    if current_atr > average_atr:
+                        tighten_percentage = 0.01
+                    else:
+                        tighten_percentage = 0.03
+                
+                initial_risk_dist = abs(position.price_open - details['original_sl'])
+                tighten_amount = initial_risk_dist * tighten_percentage
+
+                new_sl_price = 0
+                if position.type == mt5.ORDER_TYPE_BUY:
+                    potential_new_sl = details['current_sl'] + tighten_amount
+                    if potential_new_sl > details['current_sl'] and potential_new_sl < position.price_current:
+                        new_sl_price = potential_new_sl
+                else: # SELL
+                    potential_new_sl = details['current_sl'] - tighten_amount
+                    if potential_new_sl < details['current_sl'] and potential_new_sl > position.price_current:
+                        new_sl_price = potential_new_sl
+                
+                if new_sl_price > 0:
+                    props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                    rounded_new_sl = round(new_sl_price, props['digits'])
+                    logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.0f}%)")
+                    if modify_position_sltp(position, rounded_new_sl, position.tp):
+                        details['current_sl'] = rounded_new_sl
+               
 
 def manage_pending_orders():
     pending_orders = mt5.orders_get(magic=202405)
     if not pending_orders: return
     for order in pending_orders:
-        _, last_closed_candle, _ = fetch_latest_data(order.symbol)
+        _, last_closed_candle, _, _ = fetch_latest_data(order.symbol)
         if last_closed_candle is None:
             logger.warning(f"Could not get valid closed candle data for managing pending order {order.ticket}. Skipping this cycle.")
             continue
@@ -641,7 +807,7 @@ def manage_pending_orders():
             logger.info(f"[{order.symbol}] PENDING order {order.ticket} invalidated (Close vs M5_EMA21). Cancelling...")
             cancel_pending_order(order.ticket)
 
-# --- MODIFIED: check_for_new_signals now implements the full dynamic TP logic ---
+# --- MODIFIED: check_for_new_signals to call the updated fetch_latest_data ---
 def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
     new_queue, order_placed_this_cycle = [], False
@@ -653,8 +819,8 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
             new_queue.append(setup)
             continue
             
-        _, last_closed_candle, _ = fetch_latest_data(setup['symbol'])
-        if last_closed_candle is None: 
+        _, _, _, _ = fetch_latest_data(setup['symbol'])
+        if _ is None:
             new_queue.append(setup)
             continue
             
@@ -666,7 +832,6 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         order_ticket = place_pending_order(setup['symbol'], props, f"{setup['bias']}_STOP", setup['entry_price'], setup['sl_price'], setup['lot_size'], "LiveBot_v1_Delayed")
         
         if order_ticket:
-            # Store the dynamic TP for when the order is filled
             trade_details_for_closure[str(order_ticket)] = {
                 "is_pending": True,
                 "tp_price": setup['tp_price']
@@ -687,7 +852,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if not is_within_session(TRADING_SESSIONS_UTC.get(symbol, [])): continue
         if not is_outside_news_blackout(symbol, NEWS_TIMES_UTC): continue
 
-        df, last_closed_candle, df_h1 = fetch_latest_data(symbol)
+        df, last_closed_candle, _, df_h1 = fetch_latest_data(symbol)
         if df is None or last_closed_candle is None or df_h1 is None: continue
         
         props = ALL_SYMBOL_PROPERTIES[symbol]
@@ -702,10 +867,9 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
         m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
         if not ((h1_trend_bias == "BUY" and m5_fanned_buy) or (h1_trend_bias == "SELL" and m5_fanned_sell)): continue
-        # if (h1_trend_bias == "BUY" and last_closed_candle['H4_EMA8'] < last_closed_candle['H4_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['H4_EMA8'] > last_closed_candle['H4_EMA21']): continue
         is_crypto = symbol in CRYPTO_SYMBOLS
         if not is_crypto:
-            adx_value = last_closed_candle.get('H1_ADX', 0)
+            adx_value = last_closed_candle.get('M5_ADX', 0)
             if pd.isna(adx_value) or adx_value < 20: continue
         if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
         if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
@@ -719,54 +883,41 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         fib_levels = calculate_fib_levels(swing_high, swing_low); tolerance = 0.5 * last_closed_candle['ATR']
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
 
-        # --- DYNAMIC TP & FINAL CALCULATION BLOCK ---
+        # --- DYNAMIC TP & FINAL CALCULATION BLOCK (Unchanged) ---
         atr_val = last_closed_candle.get('ATR')
         if pd.isna(atr_val) or atr_val <= 0: continue
-
-        # 1. Calculate Entry and SL
         sl_distance_atr = 4.0 * atr_val if is_crypto else 4.0 * atr_val
         entry_lookback = df.iloc[-4:-1]
         entry_px, sl_px = (0, 0)
         pip_adj = 3 * props['trade_tick_size']
-
         if h1_trend_bias == "BUY":
             entry_px = entry_lookback['high'].max() + pip_adj
             sl_px = entry_px - sl_distance_atr
         else: # SELL
             entry_px = entry_lookback['low'].min() - pip_adj
             sl_px = entry_px + sl_distance_atr
-            
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
         if abs(entry_px - sl_px) <= 0: continue
-
-        # 2. Calculate Dynamic TP using H1 market structure
         swing_highs, swing_lows = get_swing_points(df_h1, order=5)
         targets = swing_highs if h1_trend_bias == 'BUY' else swing_lows
         tp_price, r_value = get_dynamic_tp(entry_px, sl_px, h1_trend_bias, targets)
-
-        # 3. Filter trade if no suitable TP is found
         if tp_price is None:
             logger.debug(f"[{symbol}] Skipped: No valid market structure TP found with at least 2R potential.")
             continue
-        
         logger.info(f"[{symbol}] Valid TP found at {tp_price:.{props['digits']}f} ({r_value:.2f}R potential).")
         tp_price = round(tp_price, props['digits'])
-
-        # 4. Final Risk Checks & Queueing
         lot_size = props['volume_min']
         est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value'] if props['trade_tick_size'] > 0 else 0
         if est_risk > mt5.account_info().balance * RISK_PER_TRADE_PERCENT:
             logger.info(f"[{symbol}] Setup found but min lot risk ({est_risk:.2f}) exceeds max allowed. Skipping.")
             continue
-
-        # Add the full setup, including the dynamic TP, to the queue
         delayed_setups_queue.append({
             "symbol": symbol, "bias": h1_trend_bias, "entry_price": entry_px, 
             "sl_price": sl_px, "tp_price": tp_price, "lot_size": lot_size, 
             "risk_amt": est_risk, "confirm_count": 0
         })
         logger.info(f"[{symbol}] SETUP QUEUED with Dynamic TP. Bias: {h1_trend_bias}, Entry: {entry_px}, SL: {sl_px}, TP: {tp_price}")
-        break # One setup queued per cycle
+        break 
 
     return daily_risk_allocated
 
