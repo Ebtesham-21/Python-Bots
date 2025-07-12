@@ -66,6 +66,12 @@ STOCK_SYMBOLS = [
 
 RISK_PER_TRADE_PERCENT = 0.01  # Risk 1% of current balance per trade
 DAILY_RISK_LIMIT_PERCENT = 0.05 # Daily risk limit of 5% of balance at start of day
+# --- ADD THIS NEW SECTION AT THE TOP OF THE SCRIPT ---
+
+# --- NEW: Entry Price Strategy Configuration ---
+# Choose one: 'BREAKOUT', 'ATR_BUFFER', 'FIXED_BUFFER', 'NO_BUFFER'
+# 'BREAKOUT' is the logic that is perfectly synchronized with your backtester.
+ENTRY_PRICE_STRATEGY = 'BREAKOUT' 
 
 # --- Commission Structure ---
 COMMISSIONS = {
@@ -400,52 +406,6 @@ def get_dynamic_tp(entry_price, sl_price, trade_type, swing_levels):
     return None, None
 # --- End of New Helpers ---
 
-# +++ NEW HELPER FUNCTION FOR DEFENSIVE TSL +++
-def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_df):
-    """
-    Re-checks the original entry conditions for an existing trade.
-    Returns True if the setup is still valid, False otherwise.
-    """
-    if last_closed_candle is None or full_m5_df is None: return False
-
-    # H1 Trend Bias Check
-    current_h1_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
-    if trade_type != current_h1_bias:
-        logger.debug(f"[{symbol}] Defensive Check FAIL: H1 bias ({current_h1_bias}) no longer matches trade type ({trade_type}).")
-        return False
-
-    # M5 Fanned EMAs Check
-    m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
-    m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
-    if not ((trade_type == "BUY" and m5_fanned_buy) or (trade_type == "SELL" and m5_fanned_sell)):
-        logger.debug(f"[{symbol}] Defensive Check FAIL: M5 EMAs are no longer fanned for {trade_type}.")
-        return False
-        
-    # ### MODIFIED ###: ADX Check (non-crypto) now uses M5_ADX to match the backtest
-    is_crypto = symbol in CRYPTO_SYMBOLS
-    if not is_crypto:
-        adx_value = last_closed_candle.get('M5_ADX', 0) # Changed from H1_ADX to M5_ADX
-        if pd.isna(adx_value) or adx_value < 20:
-            logger.debug(f"[{symbol}] Defensive Check FAIL: M5_ADX ({adx_value:.2f}) fell below 20.")
-            return False
-
-    # RSI Check (Corrected logic for SELL)
-    if trade_type == "BUY":
-        if not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50):
-            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for BUY.")
-            return False
-    elif trade_type == "SELL":
-        if not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50):
-            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for SELL.")
-            return False
-        
-    # Price vs M5 EMA21 (the core of the trend-following part)
-    if (trade_type == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (trade_type == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']):
-        logger.debug(f"[{symbol}] Defensive Check FAIL: Price crossed the M5_EMA21 against the trend.")
-        return False
-
-    # If all checks pass, the signal is still considered valid
-    return True
 
 
 
@@ -484,17 +444,16 @@ def fetch_latest_data(symbol):
     df_h4['H4_EMA21'] = ta.ema(df_h4['close'], length=21)
     df_h4['RSI_H4'] = ta.rsi(df_h4['close'], length=14)
 
-    # H1 Indicators (including ADX)
+    # H1 Indicators
     df_h1['H1_EMA8'] = ta.ema(df_h1['close'], length=8)
     df_h1['H1_EMA21'] = ta.ema(df_h1['close'], length=21)
     df_h1['RSI_H1'] = ta.rsi(df_h1['close'], length=14)
-
+    # Note: H1_ADX is calculated here but not used by the backtest logic, so we leave it but it has no effect.
     adx_h1 = ta.adx(df_h1['high'], df_h1['low'], df_h1['close'], length=14)
     if adx_h1 is not None and not adx_h1.empty:
         df_h1['H1_ADX'] = adx_h1['ADX_14']
     else:
-        df_h1['H1_ADX'] = np.nan # Handle case where ADX calculation fails
-
+        df_h1['H1_ADX'] = np.nan
     df_h1.rename(columns={'close': 'H1_Close_For_Bias'}, inplace=True)
 
     # M5 Indicators
@@ -503,42 +462,34 @@ def fetch_latest_data(symbol):
     df_m5['M5_EMA21'] = ta.ema(df_m5['close'], length=21)
     df_m5['ATR'] = ta.atr(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     df_m5['RSI_M5'] = ta.rsi(df_m5['close'], length=14)
-
-
-     # --- NEW: CALCULATE MOVING AVERAGE OF ATR FOR VOLATILITY REGIME ---
-    if 'ATR' in df_m5.columns and len(df_m5) >= 34: # Need enough data for ATR(14) + SMA(20)
+    if 'ATR' in df_m5.columns and len(df_m5) >= 34:
         df_m5['ATR_SMA20'] = ta.sma(df_m5['ATR'], length=20)
     else:
         df_m5['ATR_SMA20'] = np.nan
-    # --- END OF NEW CODE ---
-
-    # ### NEW ###: Calculate ADX on the M5 timeframe to match the backtest
+        
+    # ✅ FIX 3: Standardize ADX column name to 'ADX_14' to match backtest
     adx_m5 = ta.adx(df_m5['high'], df_m5['low'], df_m5['close'], length=14)
     if adx_m5 is not None and not adx_m5.empty:
-        df_m5['M5_ADX'] = adx_m5['ADX_14']
+        df_m5['ADX_14'] = adx_m5['ADX_14'] # Changed from M5_ADX
     else:
-        df_m5['M5_ADX'] = np.nan
+        df_m5['ADX_14'] = np.nan
 
     if 'tick_volume' in df_m5.columns and len(df_m5) >= 20:
         df_m5['volume_MA20'] = ta.sma(df_m5['tick_volume'], length=20)
     else:
         df_m5['volume_MA20'] = np.nan
 
-
-
     # Combine dataframes
     combined_df = pd.merge_asof(df_m5.sort_index(), df_h1[['H1_Close_For_Bias', 'H1_EMA8', 'H1_EMA21', 'RSI_H1', 'H1_ADX']].sort_index(),
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=1))
-
     combined_df = pd.merge_asof(combined_df.sort_index(), df_h4[['H4_EMA8', 'H4_EMA21', 'RSI_H4']].sort_index(),
                                 left_index=True, right_index=True, direction='backward', tolerance=pd.Timedelta(hours=4))
-
     combined_df.dropna(inplace=True)
+
     if combined_df.empty or len(combined_df) < 2:
         logger.warning(f"Not enough data for {symbol} after combining and cleaning. Skipping analysis.")
         return None, None, None, None
 
-    # Return the combined M5 df, the last closed M5 candle, the full M5 dataframe, AND the H1 df for TP calculation
     return combined_df, combined_df.iloc[-2], df_m5, df_h1
 
 def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_type):
@@ -611,46 +562,55 @@ def manage_closed_positions():
 
 # +++ NEW HELPER FUNCTION FOR DEFENSIVE TSL +++
 def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_df):
-    """
-    Re-checks the original entry conditions for an existing trade.
-    Returns True if the setup is still valid, False otherwise.
-    """
     if last_closed_candle is None or full_m5_df is None: return False
 
-    # H1 Trend Bias Check
-    current_h1_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
+    # ✅ FIX 1: H1 Trend Bias Check (Stricter, matches backtest)
+    h1_ema8 = last_closed_candle['H1_EMA8']; h1_ema21 = last_closed_candle['H1_EMA21']
+    h1_close = last_closed_candle['H1_Close_For_Bias']
+    current_h1_bias = None
+    if h1_ema8 > h1_ema21 and h1_close > h1_ema8 and h1_close > h1_ema21:
+        current_h1_bias = "BUY"
+    elif h1_ema8 < h1_ema21 and h1_close < h1_ema8 and h1_close < h1_ema21:
+        current_h1_bias = "SELL"
+        
     if trade_type != current_h1_bias:
         logger.debug(f"[{symbol}] Defensive Check FAIL: H1 bias ({current_h1_bias}) no longer matches trade type ({trade_type}).")
         return False
 
-    # M5 Fanned EMAs Check
+    # M5 Fanned EMAs Check (This was already correct)
     m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
     m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
     if not ((trade_type == "BUY" and m5_fanned_buy) or (trade_type == "SELL" and m5_fanned_sell)):
         logger.debug(f"[{symbol}] Defensive Check FAIL: M5 EMAs are no longer fanned for {trade_type}.")
         return False
-        
     
     # ADX Check (non-crypto)
     is_crypto = symbol in CRYPTO_SYMBOLS
     if not is_crypto:
-        # CORRECTED: Use M5_ADX to be consistent with the entry signal logic
-        adx_value = last_closed_candle.get('M5_ADX', 0) 
+        # ✅ FIX 3: Use harmonized column name 'ADX_14'
+        adx_value = last_closed_candle.get('ADX_14', 0) 
         if pd.isna(adx_value) or adx_value < 20:
-            logger.debug(f"[{symbol}] Defensive Check FAIL: M5_ADX ({adx_value:.2f}) fell below 20.")
+            logger.debug(f"[{symbol}] Defensive Check FAIL: M5 ADX ({adx_value:.2f}) fell below 20.")
             return False
 
-    # RSI Check
-    if not ((trade_type == "BUY" and last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50) or (trade_type == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50))):
-        logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for {trade_type}.")
-        return False
-        
-    # Price vs M5 EMA21 (the core of the trend-following part)
-    if (trade_type == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (trade_type == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']):
+    # ✅ FIX 2: RSI Check (Corrected logic, matches backtest's valid function)
+    rsi_m5 = last_closed_candle.get('RSI_M5', 50)
+    rsi_h1 = last_closed_candle.get('RSI_H1', 50)
+    if trade_type == "BUY":
+        if not (rsi_m5 > 50 and rsi_h1 > 50):
+            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for BUY.")
+            return False
+    elif trade_type == "SELL":
+        if not (rsi_m5 < 50 and rsi_h1 < 50):
+            logger.debug(f"[{symbol}] Defensive Check FAIL: RSI conditions no longer met for SELL.")
+            return False
+
+    # Price vs M5 EMA21 (This was already correct)
+    if (trade_type == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or \
+       (trade_type == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']):
         logger.debug(f"[{symbol}] Defensive Check FAIL: Price crossed the M5_EMA21 against the trend.")
         return False
 
-    # If all checks pass, the signal is still considered valid
     return True
 
 # +++ FULLY REVISED manage_open_positions FUNCTION +++
@@ -763,15 +723,24 @@ def manage_open_positions():
                 logger.warning(f"[{position.symbol}] DEFENSIVE TSL ACTIVATED for position {position.ticket} after 4 consecutive invalid signals.")
 
             if details['defensive_tsl_active']:
+                # Use last closed candle's ATR data for the adaptive step decision
                 current_atr = last_closed_candle.get('ATR')
                 average_atr = last_closed_candle.get('ATR_SMA20')
-                tighten_percentage = 0.03
+                
+                # Default to the most aggressive step (for low/normal volatility)
+                tighten_percentage = 0.01 # 1.0%
 
-                if pd.notna(current_atr) and pd.notna(average_atr):
-                    if current_atr > average_atr:
-                        tighten_percentage = 0.01
+                # Check for valid ATR data to make an adaptive decision
+                if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
+                    # Very High Volatility: ATR is > 150% of its average. Tighten very slowly.
+                    if current_atr > (average_atr * 1.5):
+                        tighten_percentage = 0.003 # 0.3%
+                    # High Volatility: ATR is > 100% of its average. Tighten slowly.
+                    elif current_atr > average_atr:
+                        tighten_percentage = 0.005 # 0.5%
+                    # Low/Normal Volatility: ATR is <= average. Use the default 1.0% step.
                     else:
-                        tighten_percentage = 0.03
+                        tighten_percentage = 0.01 # 1.0%
                 
                 initial_risk_dist = abs(position.price_open - details['original_sl'])
                 tighten_amount = initial_risk_dist * tighten_percentage
@@ -779,20 +748,22 @@ def manage_open_positions():
                 new_sl_price = 0
                 if position.type == mt5.ORDER_TYPE_BUY:
                     potential_new_sl = details['current_sl'] + tighten_amount
+                    # Ensure new SL is better and does not jump past the current price
                     if potential_new_sl > details['current_sl'] and potential_new_sl < position.price_current:
                         new_sl_price = potential_new_sl
                 else: # SELL
                     potential_new_sl = details['current_sl'] - tighten_amount
+                    # Ensure new SL is better and does not jump past the current price
                     if potential_new_sl < details['current_sl'] and potential_new_sl > position.price_current:
                         new_sl_price = potential_new_sl
                 
                 if new_sl_price > 0:
                     props = ALL_SYMBOL_PROPERTIES[position.symbol]
                     rounded_new_sl = round(new_sl_price, props['digits'])
-                    logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.0f}%)")
+                    # Updated logger to show correct percentage format (e.g., 0.3%, 0.5%, 1.0%)
+                    logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.1f}%)")
                     if modify_position_sltp(position, rounded_new_sl, position.tp):
                         details['current_sl'] = rounded_new_sl
-               
 
 def manage_pending_orders():
     pending_orders = mt5.orders_get(magic=202405)
@@ -808,34 +779,29 @@ def manage_pending_orders():
             cancel_pending_order(order.ticket)
 
 # --- MODIFIED: check_for_new_signals to call the updated fetch_latest_data ---
+# --- IN bookStrategyLivetp.py, REPLACE THE ENTIRE check_for_new_signals FUNCTION ---
+
 def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
     new_queue, order_placed_this_cycle = [], False
     
-    # --- Process the delayed queue ---
+    # Process the delayed queue (this logic is fine)
     for setup in delayed_setups_queue:
         setup['confirm_count'] += 1
         if setup['confirm_count'] < 2: 
             new_queue.append(setup)
             continue
-            
         _, _, _, _ = fetch_latest_data(setup['symbol'])
         if _ is None:
             new_queue.append(setup)
             continue
-            
         if daily_risk_allocated + setup["risk_amt"] > max_daily_risk:
             logger.warning(f"[{setup['symbol']}] Delayed setup confirmed, but would exceed daily risk limit. Discarding.")
             continue
-            
         props = ALL_SYMBOL_PROPERTIES[setup['symbol']]
         order_ticket = place_pending_order(setup['symbol'], props, f"{setup['bias']}_STOP", setup['entry_price'], setup['sl_price'], setup['lot_size'], "LiveBot_v1_Delayed")
-        
         if order_ticket:
-            trade_details_for_closure[str(order_ticket)] = {
-                "is_pending": True,
-                "tp_price": setup['tp_price']
-            }
+            trade_details_for_closure[str(order_ticket)] = {"is_pending": True, "tp_price": setup['tp_price']}
             daily_risk_allocated += setup["risk_amt"]
             order_placed_this_cycle = True
             break
@@ -846,9 +812,10 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     if order_placed_this_cycle: 
         return daily_risk_allocated
 
-    # --- Scan for new signals ---
+    # Scan for new signals
     for symbol in SYMBOLS_AVAILABLE_FOR_TRADE:
         if is_weekend_utc() and symbol not in CRYPTO_SYMBOLS: continue
+        # Make sure you have synchronized the TRADING_SESSIONS_UTC dictionary!
         if not is_within_session(TRADING_SESSIONS_UTC.get(symbol, [])): continue
         if not is_outside_news_blackout(symbol, NEWS_TIMES_UTC): continue
 
@@ -856,25 +823,58 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if df is None or last_closed_candle is None or df_h1 is None: continue
         
         props = ALL_SYMBOL_PROPERTIES[symbol]
+        
+        # --- STRATEGY CONDITIONS ---
 
-        # --- All Strategy Conditions (Unchanged) ---
         if symbol in STOCK_SYMBOLS:
             current_volume = last_closed_candle.get('tick_volume', 0); avg_volume = last_closed_candle.get('volume_MA20', 0)
             if pd.notna(current_volume) and pd.notna(avg_volume) and avg_volume > 0:
                 if current_volume < (1.5 * avg_volume): continue
-        h1_trend_bias = "BUY" if last_closed_candle['H1_EMA8'] > last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] > last_closed_candle['H1_EMA8'] else "SELL" if last_closed_candle['H1_EMA8'] < last_closed_candle['H1_EMA21'] and last_closed_candle['H1_Close_For_Bias'] < last_closed_candle['H1_EMA8'] else None
+        
+        # 1. H1 Trend Filter (This is now correct)
+        h1_ema8 = last_closed_candle['H1_EMA8']; h1_ema21 = last_closed_candle['H1_EMA21']
+        h1_close = last_closed_candle['H1_Close_For_Bias']
+        h1_trend_bias = None
+        if h1_ema8 > h1_ema21 and h1_close > h1_ema8 and h1_close > h1_ema21:
+            h1_trend_bias = "BUY"
+        elif h1_ema8 < h1_ema21 and h1_close < h1_ema8 and h1_close < h1_ema21:
+            h1_trend_bias = "SELL"
         if not h1_trend_bias: continue
+
+        # 2. M5 EMA Filter (This was always correct)
         m5_fanned_buy = last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] > last_closed_candle['M5_EMA21']
         m5_fanned_sell = last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA13'] or last_closed_candle['M5_EMA8'] < last_closed_candle['M5_EMA21']
         if not ((h1_trend_bias == "BUY" and m5_fanned_buy) or (h1_trend_bias == "SELL" and m5_fanned_sell)): continue
+        
+        # 3. ADX Filter (This is now correct)
         is_crypto = symbol in CRYPTO_SYMBOLS
         if not is_crypto:
-            adx_value = last_closed_candle.get('M5_ADX', 0)
+            adx_value = last_closed_candle.get('ADX_14', 0)
             if pd.isna(adx_value) or adx_value < 20: continue
-        if (h1_trend_bias == "BUY" and not (last_closed_candle['RSI_M5'] > 50 and last_closed_candle['RSI_H1'] > 50)) or (h1_trend_bias == "SELL" and not (last_closed_candle['RSI_M5'] < 50 and last_closed_candle['RSI_H1'] < 50)): continue
-        if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
-        pullback_found = (h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8']) if is_crypto else (h1_trend_bias == "BUY" and last_closed_candle['close'] <= last_closed_candle['M5_EMA8']) or (h1_trend_bias == "SELL" and last_closed_candle['close'] >= last_closed_candle['M5_EMA8'])
+
+        # ✅ 4. CORRECTED RSI Filter Logic
+        rsi_m5 = last_closed_candle.get('RSI_M5', 50)
+        rsi_h1 = last_closed_candle.get('RSI_H1', 50)
+        if h1_trend_bias == "BUY":
+            if not (rsi_m5 > 50 and rsi_h1 > 50):
+                continue
+        elif h1_trend_bias == "SELL":
+            if not (rsi_m5 < 50 and rsi_h1 < 50):
+                continue
+
+        # 5. Price vs M5 EMA21 Filter (This was always correct)
+        if (h1_trend_bias == "BUY" and last_closed_candle['close'] < last_closed_candle['M5_EMA21']) or \
+           (h1_trend_bias == "SELL" and last_closed_candle['close'] > last_closed_candle['M5_EMA21']): continue
+        
+        # 6. Pullback Filter (This was always correct)
+        pullback_found = (h1_trend_bias == "BUY" and last_closed_candle['low'] <= last_closed_candle['M5_EMA8']) or \
+                         (h1_trend_bias == "SELL" and last_closed_candle['high'] >= last_closed_candle['M5_EMA8']) \
+                         if is_crypto else \
+                         (h1_trend_bias == "BUY" and last_closed_candle['close'] <= last_closed_candle['M5_EMA8']) or \
+                         (h1_trend_bias == "SELL" and last_closed_candle['close'] >= last_closed_candle['M5_EMA8'])
         if not pullback_found: continue
+        
+        # --- The rest of the logic was already synchronized and is correct ---
         recent_candles = df.iloc[-6:-2]; bullish_count = (recent_candles['close'] > recent_candles['open']).sum(); bearish_count = (recent_candles['close'] < recent_candles['open']).sum()
         if (h1_trend_bias == "BUY" and bullish_count > 2) or (h1_trend_bias == "SELL" and bearish_count > 2): continue
         lookback_window = df.iloc[-12:-2]; swing_high, swing_low = lookback_window['high'].max(), lookback_window['low'].min()
@@ -882,22 +882,78 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         if calculate_pullback_depth(impulse_start, impulse_end, price_for_pb, h1_trend_bias) < 0.30: continue
         fib_levels = calculate_fib_levels(swing_high, swing_low); tolerance = 0.5 * last_closed_candle['ATR']
         if not any(abs(last_closed_candle['M5_EMA8'] - fib_price) <= tolerance or abs(last_closed_candle['M5_EMA13'] - fib_price) <= tolerance for fib_price in fib_levels.values()): continue
+        
+        # --- Final Calculation Block (already synchronized) ---
+               # --- PASTE THIS NEW CODE BLOCK IN ITS PLACE ---
 
-        # --- DYNAMIC TP & FINAL CALCULATION BLOCK (Unchanged) ---
         atr_val = last_closed_candle.get('ATR')
-        if pd.isna(atr_val) or atr_val <= 0: continue
-        sl_distance_atr = 4.0 * atr_val if is_crypto else 4.0 * atr_val
-        entry_lookback = df.iloc[-4:-1]
+        if pd.isna(atr_val) or atr_val <= 0: 
+            logger.debug(f"[{symbol}] Skipping due to invalid ATR value.")
+            continue
+
+        # --- SL Calculation (remains consistent across all entry strategies) ---
+        sl_distance_atr = 4.0 * atr_val
+
+        # --- Entry Price Calculation (based on the chosen strategy) ---
         entry_px, sl_px = (0, 0)
-        pip_adj = 3 * props['trade_tick_size']
+
+        # --- BUY LOGIC ---
         if h1_trend_bias == "BUY":
-            entry_px = entry_lookback['high'].max() + pip_adj
+            if ENTRY_PRICE_STRATEGY == 'BREAKOUT':
+                # Perfectly synchronized logic: breakout of the high of the 3 candles PRECEDING the signal candle.
+                # Signal candle is at df.iloc[-2]. The 3 before it are at indices -5, -4, -3.
+                entry_lookback = df.iloc[-5:-2] 
+                pip_adj = 3 * props['trade_tick_size']
+                entry_px = entry_lookback['high'].max() + pip_adj
+            
+            elif ENTRY_PRICE_STRATEGY == 'ATR_BUFFER':
+                # Tighter entry: signal candle's high + a fraction of ATR
+                entry_px = last_closed_candle['high'] + (0.5 * atr_val)
+
+            elif ENTRY_PRICE_STRATEGY == 'FIXED_BUFFER':
+                # Tighter entry: signal candle's high + a small fixed pip buffer
+                fixed_buffer_pips = 3
+                fixed_buffer_price = fixed_buffer_pips * props['pip_value_calc']
+                entry_px = last_closed_candle['high'] + fixed_buffer_price
+
+            elif ENTRY_PRICE_STRATEGY == 'NO_BUFFER':
+                # Most aggressive: entry right at the signal candle's high
+                entry_px = last_closed_candle['high']
+
+            # Set the SL based on the calculated entry price
             sl_px = entry_px - sl_distance_atr
-        else: # SELL
-            entry_px = entry_lookback['low'].min() - pip_adj
+
+        # --- SELL LOGIC ---
+        else: # h1_trend_bias == "SELL"
+            if ENTRY_PRICE_STRATEGY == 'BREAKOUT':
+                # Perfectly synchronized logic: breakout of the low of the 3 candles PRECEDING the signal candle.
+                entry_lookback = df.iloc[-5:-2]
+                pip_adj = 3 * props['trade_tick_size']
+                entry_px = entry_lookback['low'].min() - pip_adj
+
+            elif ENTRY_PRICE_STRATEGY == 'ATR_BUFFER':
+                # Tighter entry: signal candle's low - a fraction of ATR
+                entry_px = last_closed_candle['low'] - (0.5 * atr_val)
+
+            elif ENTRY_PRICE_STRATEGY == 'FIXED_BUFFER':
+                # Tighter entry: signal candle's low - a small fixed pip buffer
+                fixed_buffer_pips = 3
+                fixed_buffer_price = fixed_buffer_pips * props['pip_value_calc']
+                entry_px = last_closed_candle['low'] - fixed_buffer_price
+
+            elif ENTRY_PRICE_STRATEGY == 'NO_BUFFER':
+                # Most aggressive: entry right at the signal candle's low
+                entry_px = last_closed_candle['low']
+
+            # Set the SL based on the calculated entry price
             sl_px = entry_px + sl_distance_atr
+
+        # Round the final values to the correct number of digits for the symbol
         entry_px, sl_px = round(entry_px, props['digits']), round(sl_px, props['digits'])
+        
+        # Final check to ensure there's a valid distance between entry and SL
         if abs(entry_px - sl_px) <= 0: continue
+        # --- END OF REPLACEMENT BLOCK ---
         swing_highs, swing_lows = get_swing_points(df_h1, order=5)
         targets = swing_highs if h1_trend_bias == 'BUY' else swing_lows
         tp_price, r_value = get_dynamic_tp(entry_px, sl_px, h1_trend_bias, targets)

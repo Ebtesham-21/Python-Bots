@@ -48,9 +48,9 @@ STOCK_SYMBOLS = [
 ]
 
 TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(0, 6)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
-                           "AUDJPY":[(0, 12)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
-                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,12)], "EURAUD":[(0,17)], 
+                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
+                           "AUDJPY":[(0, 17)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
+                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,17)], "EURAUD":[(0,17)], 
                            "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(10, 17)], 
                            "USTEC": [(10, 17)],"INTC":[(10, 17)], "MO":[(10, 17)], "BABA":[(10, 17)], "ABT":[(10, 17)], "LI":[(10, 17)], "TME":[(10, 17)], "ADBE":[(10, 17)], "MMM":[(10, 17)], "WMT":[(10, 17)], "PFE":[(10, 17)], "EQIX":[(10, 17)], "F":[(10, 17)], "ORCL":[(10, 17)], "BA":[(10, 17)], "NKE":[(10, 17)], "C":[(10, 17)],
                           
@@ -822,13 +822,21 @@ if __name__ == "__main__":
                                     # Use previous candle's ATR data for the adaptive step decision
                                     current_atr = previous_candle.get('ATR')
                                     average_atr = previous_candle.get('ATR_SMA20')
-                                    tighten_percentage = 0.03
+                                    
+                                    # Default to the most aggressive step (for low volatility)
+                                    tighten_percentage = 0.01 # 1.0%
 
-                                    if pd.notna(current_atr) and pd.notna(average_atr):
-                                        if current_atr > average_atr:
-                                            tighten_percentage = 0.01 
+                                    # Check for valid ATR data to make an adaptive decision
+                                    if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
+                                        # Very High Volatility: ATR is > 150% of its average. Tighten very slowly.
+                                        if current_atr > (average_atr * 1.5):
+                                            tighten_percentage = 0.003 # 0.3%
+                                        # High Volatility: ATR is > 100% of its average. Tighten slowly.
+                                        elif current_atr > average_atr:
+                                            tighten_percentage = 0.005 # 0.5%
+                                        # Low/Normal Volatility: ATR is <= average. Use the default 1.0% step.
                                         else:
-                                            tighten_percentage = 0.03
+                                            tighten_percentage = 0.01 # 1.0%
                                     
                                     initial_risk_dist = abs(global_active_trade['entry_price'] - global_active_trade['initial_sl'])
                                     tighten_amount = initial_risk_dist * tighten_percentage
@@ -836,16 +844,19 @@ if __name__ == "__main__":
                                     new_sl_price = 0
                                     if global_active_trade['type'] == "BUY":
                                         potential_new_sl = global_active_trade['sl'] + tighten_amount
+                                        # Prevent SL from jumping over the current candle's low
                                         if potential_new_sl > global_active_trade['sl'] and potential_new_sl < current_candle['low']:
                                             new_sl_price = potential_new_sl
                                     else: # SELL
                                         potential_new_sl = global_active_trade['sl'] - tighten_amount
+                                        # Prevent SL from jumping over the current candle's high
                                         if potential_new_sl < global_active_trade['sl'] and potential_new_sl > current_candle['high']:
                                             new_sl_price = potential_new_sl
                                     
                                     if new_sl_price > 0:
                                         rounded_new_sl = round(new_sl_price, props['digits'])
-                                        logger.warning(f"[{trade_symbol}] Defensive TSL Update: Adaptively tightening SL to {rounded_new_sl:.{props['digits']}f} (step: {tighten_percentage*100}%)")
+                                        # Updated logger to show the correct percentage format (e.g., 0.3%, 0.5%, 1.0%)
+                                        logger.warning(f"[{trade_symbol}] Defensive TSL Update: Adaptively tightening SL to {rounded_new_sl:.{props['digits']}f} (step: {tighten_percentage*100:.1f}%)")
                                         global_active_trade['sl'] = rounded_new_sl
 
             if not global_active_trade and global_pending_order:
