@@ -87,11 +87,11 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[("6:00")], "GBPUSD":[("6:00")],
-                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[ ("12:30")],"USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[("12:30")], "CADJPY":[("12:30")], "EURCAD":[("12:30")],
-                           "GBPCAD":[("6:00"), ("12:30")], "NZDCAD":[("12:30")], "GBPAUD":[("6:00")], "GBPNZD":[("6:00")], "GBPCHF":[("6:00")], "AUDCAD":[("12:30")], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
-                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
-                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+"EURUSD":[("12:30") ], "USDCHF":[("12:30")],   "GBPJPY":[], "GBPUSD":[ ("12:30")],
+                           "AUDJPY":[("1:30")],   "EURNZD":[], "NZDUSD":[("12:30")], "AUDUSD":[("1:30") , ("12:30") ], "USDCAD":[ ("12:30")], "USDJPY":[("12:30") ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
+                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[("1:30")], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[("1:30")], "AUDCHF":[("1:30")], "AUDNZD":[("1:30")], "EURAUD":[("1:30")],
+                       "USOIL":[("12:30")], "UKOIL":[], "XAUUSD":[("12:30")], "XAGUSD":[("12:30")],
+                       "BTCUSD":[("12:30")], "BTCJPY":[("12:30")], "BTCXAU":[("12:30")], "ETHUSD":[("12:30")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
 
 }
@@ -615,6 +615,8 @@ def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_d
 
 # +++ FULLY REVISED manage_open_positions FUNCTION +++
 
+# +++ FULLY REVISED manage_open_positions FUNCTION +++
+
 def manage_open_positions():
     open_positions = mt5.positions_get(magic=202405)
     if not open_positions: return
@@ -622,7 +624,7 @@ def manage_open_positions():
     for position in open_positions:
         pos_id_str = str(position.ticket)
 
-        # --- BLOCK 1: NEW POSITION INITIALIZATION ---
+        # --- BLOCK 1: NEW POSITION INITIALIZATION (No changes here, remains the same) ---
         if pos_id_str not in logged_open_position_ids:
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
             tp_price = 0.0
@@ -669,43 +671,63 @@ def manage_open_positions():
         if last_closed_candle is None:
             logger.warning(f"Could not get data for TSL on position {position.ticket}. Skipping.")
             continue
-
-        # --- "Offensive Brain": Volatility-Adjusted TSL ---
-        atr_val = last_closed_candle.get('ATR', np.nan)
-        if pd.notna(atr_val) and atr_val > 0:
-            TRAIL_ACTIVATION_ATR = 0.5
-            TRAIL_DISTANCE_ATR = 1.5
-            
-            initial_risk_price_diff = abs(position.price_open - details['original_sl'])
-            # In live trading, the 'high' and 'low' of the last_closed_candle are final.
-            move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
-            atr_movement_from_risk = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
-
-            if not details['trailing_active'] and atr_movement_from_risk >= TRAIL_ACTIVATION_ATR:
-                details['trailing_active'] = True
-                logger.info(f"[{position.symbol}] OFFENSIVE TSL ACTIVATED for position {position.ticket}.")
-
-            if details['trailing_active']:
-                new_sl_price = 0
-                if position.type == mt5.ORDER_TYPE_BUY:
-                    potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
-                    if potential_new_sl > details['current_sl']:
-                        new_sl_price = potential_new_sl
-                else: # SELL trade
-                    potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
-                    if potential_new_sl < details['current_sl']:
-                        new_sl_price = potential_new_sl
-
-                if new_sl_price > 0:
-                    props = ALL_SYMBOL_PROPERTIES[position.symbol]
-                    rounded_new_sl = round(new_sl_price, props['digits'])
-                    logger.info(f"[{position.symbol}] Offensive TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
-                    if modify_position_sltp(position, rounded_new_sl, position.tp):
-                        details['current_sl'] = rounded_new_sl
-                
-                continue
         
-        # --- "Defensive Brain": Signal-Degradation SL Tightening ---
+        # If the Defensive brain is active, it takes priority. Skip the Offensive brain.
+        if details['defensive_tsl_active']:
+            # --- "Defensive Brain" logic is handled below ---
+            pass
+        else:
+            # --- "Offensive Brain": Volatility-Adjusted TSL (SYNCHRONIZED WITH BACKTESTER) ---
+            current_atr = last_closed_candle.get('ATR')
+            average_atr = last_closed_candle.get('ATR_SMA20')
+
+            # Guard clause to ensure we have valid data for the adaptive logic
+            if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0 and current_atr > 0:
+                
+                # --- START OF SYNCHRONIZED LOGIC (from backtester) ---
+                volatility_ratio = current_atr / average_atr
+                
+                # Set TSL parameters based on the volatility regime
+                if volatility_ratio >= 2.0:         # Very High Volatility
+                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 2.0, 3.0
+                elif volatility_ratio >= 1.25:      # High Volatility
+                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.5, 2.5
+                elif volatility_ratio >= 0.75:      # Normal Volatility
+                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.0, 2.0
+                else:                               # Low Volatility
+                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 0.5, 1.5
+                # --- END OF SYNCHRONIZED LOGIC ---
+
+                initial_risk_price_diff = abs(position.price_open - details['original_sl'])
+                move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
+                r_multiple_achieved = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
+
+                if not details['trailing_active'] and r_multiple_achieved >= TRAIL_ACTIVATION_ATR:
+                    details['trailing_active'] = True
+                    logger.info(f"[{position.symbol}] Vol Ratio: {volatility_ratio:.2f}. OFFENSIVE TSL ACTIVATED for pos {position.ticket} at {r_multiple_achieved:.2f}R.")
+
+                if details['trailing_active']:
+                    new_sl_price = 0
+                    if position.type == mt5.ORDER_TYPE_BUY:
+                        potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * current_atr)
+                        if potential_new_sl > details['current_sl']:
+                            new_sl_price = potential_new_sl
+                    else: # SELL trade
+                        potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * current_atr)
+                        if potential_new_sl < details['current_sl']:
+                            new_sl_price = potential_new_sl
+
+                    if new_sl_price > 0:
+                        props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                        rounded_new_sl = round(new_sl_price, props['digits'])
+                        if rounded_new_sl != details['current_sl']:
+                            logger.info(f"[{position.symbol}] Offensive TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
+                            if modify_position_sltp(position, rounded_new_sl, position.tp):
+                                details['current_sl'] = rounded_new_sl
+                    
+                    continue # If offensive TSL is active and ran, skip the defensive check for this cycle
+
+        # --- "Defensive Brain": Signal-Degradation SL Tightening (No changes here, remains the same) ---
         trade_type = "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL"
         is_still_valid = is_trade_setup_still_valid(position.symbol, trade_type, last_closed_candle, full_m5_df)
 
@@ -723,24 +745,17 @@ def manage_open_positions():
                 logger.warning(f"[{position.symbol}] DEFENSIVE TSL ACTIVATED for position {position.ticket} after 4 consecutive invalid signals.")
 
             if details['defensive_tsl_active']:
-                # Use last closed candle's ATR data for the adaptive step decision
                 current_atr = last_closed_candle.get('ATR')
                 average_atr = last_closed_candle.get('ATR_SMA20')
-                
-                # Default to the most aggressive step (for low/normal volatility)
-                tighten_percentage = 0.01 # 1.0%
+                tighten_percentage = 0.01 
 
-                # Check for valid ATR data to make an adaptive decision
                 if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
-                    # Very High Volatility: ATR is > 150% of its average. Tighten very slowly.
                     if current_atr > (average_atr * 1.5):
-                        tighten_percentage = 0.003 # 0.3%
-                    # High Volatility: ATR is > 100% of its average. Tighten slowly.
+                        tighten_percentage = 0.003
                     elif current_atr > average_atr:
-                        tighten_percentage = 0.005 # 0.5%
-                    # Low/Normal Volatility: ATR is <= average. Use the default 1.0% step.
+                        tighten_percentage = 0.005
                     else:
-                        tighten_percentage = 0.01 # 1.0%
+                        tighten_percentage = 0.01
                 
                 initial_risk_dist = abs(position.price_open - details['original_sl'])
                 tighten_amount = initial_risk_dist * tighten_percentage
@@ -748,22 +763,20 @@ def manage_open_positions():
                 new_sl_price = 0
                 if position.type == mt5.ORDER_TYPE_BUY:
                     potential_new_sl = details['current_sl'] + tighten_amount
-                    # Ensure new SL is better and does not jump past the current price
                     if potential_new_sl > details['current_sl'] and potential_new_sl < position.price_current:
                         new_sl_price = potential_new_sl
                 else: # SELL
                     potential_new_sl = details['current_sl'] - tighten_amount
-                    # Ensure new SL is better and does not jump past the current price
                     if potential_new_sl < details['current_sl'] and potential_new_sl > position.price_current:
                         new_sl_price = potential_new_sl
                 
                 if new_sl_price > 0:
                     props = ALL_SYMBOL_PROPERTIES[position.symbol]
                     rounded_new_sl = round(new_sl_price, props['digits'])
-                    # Updated logger to show correct percentage format (e.g., 0.3%, 0.5%, 1.0%)
-                    logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.1f}%)")
-                    if modify_position_sltp(position, rounded_new_sl, position.tp):
-                        details['current_sl'] = rounded_new_sl
+                    if rounded_new_sl != details['current_sl']:
+                        logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.1f}%)")
+                        if modify_position_sltp(position, rounded_new_sl, position.tp):
+                            details['current_sl'] = rounded_new_sl
 
 def manage_pending_orders():
     pending_orders = mt5.orders_get(magic=202405)
@@ -902,7 +915,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
             if ENTRY_PRICE_STRATEGY == 'BREAKOUT':
                 # Perfectly synchronized logic: breakout of the high of the 3 candles PRECEDING the signal candle.
                 # Signal candle is at df.iloc[-2]. The 3 before it are at indices -5, -4, -3.
-                entry_lookback = df.iloc[-5:-2] 
+                entry_lookback = df.iloc[-4:-1] 
                 pip_adj = 3 * props['trade_tick_size']
                 entry_px = entry_lookback['high'].max() + pip_adj
             
@@ -927,7 +940,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         else: # h1_trend_bias == "SELL"
             if ENTRY_PRICE_STRATEGY == 'BREAKOUT':
                 # Perfectly synchronized logic: breakout of the low of the 3 candles PRECEDING the signal candle.
-                entry_lookback = df.iloc[-5:-2]
+                entry_lookback = df.iloc[-4:-1]
                 pip_adj = 3 * props['trade_tick_size']
                 entry_px = entry_lookback['low'].min() - pip_adj
 
