@@ -699,7 +699,16 @@ def manage_open_positions():
         else:
             details['invalid_signal_streak'] += 1
         
-        defensive_conditions_met = (details['invalid_signal_streak'] >= 4)
+        vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
+
+        if vol_ratio > 1.5:
+            max_streak = 6  # tighter, for volatile markets
+        elif vol_ratio < 0.75:
+            max_streak = 10  # more breathing room for low-volatility chop
+        else:
+            max_streak = 8
+
+        defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
         
         # --- PRIORITY-BASED ACTION ---
         
@@ -788,10 +797,11 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
     global delayed_setups_queue
     new_queue, order_placed_this_cycle = [], False
     
-    # Process the delayed queue (this logic is fine)
+    # Process the delayed queue
     for setup in delayed_setups_queue:
         setup['confirm_count'] += 1
-        if setup['confirm_count'] < 2: 
+        # Use the stored 'confirm_target' for the check, defaulting to 2 if not present
+        if setup['confirm_count'] < setup.get('confirm_target', 2): 
             new_queue.append(setup)
             continue
         _, _, _, _ = fetch_latest_data(setup['symbol'])
@@ -967,15 +977,30 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         tp_price = round(tp_price, props['digits'])
         lot_size = props['volume_min']
         est_risk = lot_size * (abs(entry_px - sl_px) / props['trade_tick_size']) * props['trade_tick_value'] if props['trade_tick_size'] > 0 else 0
+               # ... at the end of check_for_new_signals ...
+
         if est_risk > mt5.account_info().balance * RISK_PER_TRADE_PERCENT:
             logger.info(f"[{symbol}] Setup found but min lot risk ({est_risk:.2f}) exceeds max allowed. Skipping.")
             continue
+
+        # --- NEW: DYNAMIC CONFIRMATION LOGIC ---
+        current_atr = last_closed_candle.get('ATR', 0)
+        average_atr = last_closed_candle.get('ATR_SMA20', 0)
+
+        vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
+        
+        # Determine confirmation need based on volatility expansion
+        confirm_count_required = 1 if vol_ratio >= 1.5 else 2
+        # ----------------------------------------
+        
         delayed_setups_queue.append({
             "symbol": symbol, "bias": h1_trend_bias, "entry_price": entry_px, 
             "sl_price": sl_px, "tp_price": tp_price, "lot_size": lot_size, 
-            "risk_amt": est_risk, "confirm_count": 0
+            "risk_amt": est_risk, 
+            "confirm_count": 0,
+            "confirm_target": confirm_count_required # <-- ADDED
         })
-        logger.info(f"[{symbol}] SETUP QUEUED with Dynamic TP. Bias: {h1_trend_bias}, Entry: {entry_px}, SL: {sl_px}, TP: {tp_price}")
+        logger.info(f"[{symbol}] SETUP QUEUED (Req Confirm: {confirm_count_required}). Bias: {h1_trend_bias}, Entry: {entry_px}, SL: {sl_px}")
         break 
 
     return daily_risk_allocated

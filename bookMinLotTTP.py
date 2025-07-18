@@ -808,7 +808,16 @@ if __name__ == "__main__":
                         else:
                             details['invalid_signal_streak'] += 1
                         
-                        defensive_conditions_met = (details['invalid_signal_streak'] >= 4)
+                        vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
+
+                        if vol_ratio > 1.5:
+                            max_streak = 6  # tighter, for volatile markets
+                        elif vol_ratio < 0.75:
+                            max_streak = 10  # more breathing room for low-volatility chop
+                        else:
+                            max_streak = 8
+
+                        defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
                         # --- PRIORITY-BASED ACTION ---
                         
@@ -949,7 +958,8 @@ if __name__ == "__main__":
                     
                     for setup in delayed_setups_queue:
                         setup["confirm_count"] += 1
-                        if setup["confirm_count"] >= 2:
+                        # Use the stored 'confirm_target' for the check, defaulting to 2 if not present
+                        if setup["confirm_count"] >= setup.get('confirm_target', 2):
                             setups_to_process_now.append(setup)
                         else:
                             setups_to_keep_for_later.append(setup)
@@ -1152,16 +1162,30 @@ if __name__ == "__main__":
                         estimated_risk_min_lot = lot_size_fixed_min * (abs(entry_px - sl_px) / props_setup['trade_tick_size']) * props_setup['trade_tick_value'] if props_setup['trade_tick_size'] > 0 else 0
                         if estimated_risk_min_lot <= 0: continue
                             
+                                                # ... inside the signal finding loop ...
+
                         max_allowed_risk_per_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
                         if estimated_risk_min_lot > max_allowed_risk_per_trade: continue
+
+                        # --- NEW: DYNAMIC CONFIRMATION LOGIC ---
+                        current_atr = previous_candle.get('ATR', 0)
+                        average_atr = previous_candle.get('ATR_SMA20', 0)
+                        
+                        vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
+                        
+                        # Determine confirmation need based on volatility expansion
+                        confirm_count_required = 1 if vol_ratio >= 1.5 else 2
+                        # ----------------------------------------
                         
                         delayed_setups_queue.append({
                             "symbol": sym_to_check_setup, "timestamp": timestamp, "bias": m5_setup_bias_setup,
                             "entry_price": entry_px, "sl_price": sl_px, "lot_size": lot_size_fixed_min,
                             "tp_price": tp_price,
-                            "risk_amt": estimated_risk_min_lot, "confirm_count": 0
+                            "risk_amt": estimated_risk_min_lot, 
+                            "confirm_count": 0,
+                            "confirm_target": confirm_count_required # <-- ADDED
                         })
-                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED with Dynamic TP. Bias: {m5_setup_bias_setup}, Entry: {entry_px}, TP: {tp_price}")
+                        logger.info(f"[{sym_to_check_setup}] {timestamp} Setup QUEUED (Req Confirm: {confirm_count_required}). Bias: {m5_setup_bias_setup}, Entry: {entry_px}")
 
         # ===================================================================
         # =============== END OF THE MAIN BACKTESTING LOOP ==================
