@@ -709,8 +709,16 @@ if __name__ == "__main__":
                 consecutive_losses_count = 0
                 logger.debug(f"Portfolio New Day: {current_simulation_date}. Max Daily Risk: {max_daily_risk_budget_for_current_date:.2f} (Bal: {shared_account_balance:.2f}). Daily risk & loss counters reset.")
 
+           
+            
+            # --- MANAGE ACTIVE TRADE ---
+                       # =========================================================================================
+            # === START: SYNCHRONIZED DYNAMIC TRADE MANAGEMENT LOGIC ==================================
             # =========================================================================================
-            # === START: TRADE MANAGEMENT LOGIC (CORRECTLY INDENTED INSIDE THE LOOP) ================
+            
+            # --- MANAGE ACTIVE TRADE ---
+                       # =========================================================================================
+            # === START: FINAL DYNAMIC TSL (with Offensive "Hand-Off" from Initial SL) ================
             # =========================================================================================
             
             # --- MANAGE ACTIVE TRADE ---
@@ -724,14 +732,15 @@ if __name__ == "__main__":
                     try:
                         current_idx = symbol_df.index.get_loc(timestamp)
                         if current_idx < 1: 
-                            continue # This is now valid because it's inside the 'for timestamp...' loop
+                            continue
                     except KeyError: 
-                        continue # This is also valid
+                        continue
 
                     current_candle = symbol_df.iloc[current_idx]
                     previous_candle = symbol_df.iloc[current_idx - 1]
 
-                    # --- Part 1: Check for SL/TP hits using the CURRENT candle's H/L ---
+                    # --- Part 1: SL/TP Hit Check ---
+                    # ... (This block is unchanged) ...
                     exit_price = 0
                     spread_price = SPREAD_PIPS * props['pip_value_calc']
                     if global_active_trade['type'] == "BUY":
@@ -745,8 +754,9 @@ if __name__ == "__main__":
                         elif (current_candle['high'] + spread_price) >= global_active_trade['sl']:
                             exit_price, global_active_trade['status'] = global_active_trade['sl'], "SL_HIT"
 
+                    # --- Part 2: Trade Closure Processing ---
                     if global_active_trade['status'] != "OPEN":
-                        # --- This is your correct trade closure logic ---
+                        # ... (This block is unchanged) ...
                         global_active_trade['exit_time'] = timestamp; global_active_trade['exit_price'] = exit_price
                         price_diff = (exit_price - global_active_trade['entry_price']) if global_active_trade['type'] == "BUY" else (global_active_trade['entry_price'] - exit_price)
                         pnl_ticks = price_diff / props['trade_tick_size'] if props['trade_tick_size'] > 0 else 0
@@ -763,81 +773,107 @@ if __name__ == "__main__":
                         trades_per_symbol_map[trade_symbol].append(global_active_trade.copy())
                         log_backtest_trade_to_csv(global_active_trade)
                         global_active_trade = None
-                        # --- End of trade closure logic ---
+                        continue
 
-                    # --- Part 2: If still open, manage the trade with the Dual-Brain TSL ---
+                    # --- Part 3: Dynamic TSL Logic ---
                     elif global_active_trade:
+                        details = global_active_trade
                         
-                        # --- "Defensive Brain" Check (uses previous_candle data) ---
-                        is_still_valid = is_backtest_setup_still_valid(trade_symbol, global_active_trade['type'], previous_candle, symbol_df)
-                        if not is_still_valid:
-                            global_active_trade['invalid_signal_streak'] += 1
-                            if not global_active_trade['defensive_tsl_active'] and global_active_trade['invalid_signal_streak'] >= 4:
-                                global_active_trade['defensive_tsl_active'] = True
-                                logger.warning(f"[{trade_symbol}] {timestamp} DEFENSIVE TSL ACTIVATED after 4 consecutive invalid signals.")
-                        else:
-                            if global_active_trade['invalid_signal_streak'] > 0:
-                                logger.info(f"[{trade_symbol}] {timestamp} Signal VALID again. Resetting strikes.")
-                            global_active_trade['invalid_signal_streak'] = 0
+                        # --- DYNAMIC STATE ASSESSMENT ---
+                        # 1. Check Offensive Conditions
+                        offensive_conditions_met = False
+                        current_atr = previous_candle.get('ATR')
+                        average_atr = previous_candle.get('ATR_SMA20')
 
-                        # --- Apply TSL based on which brain is active ---
-                        if global_active_trade['defensive_tsl_active']:
-                            # --- DEFENSIVE BRAIN IS ACTIVE ---
-                            # --- BIAS-FREE CORRECTED LOGIC ---
-                            atr_val = previous_candle.get('ATR')
-                            avg_atr = previous_candle.get('ATR_SMA20')
-                            tighten_percentage = 0.01
-                            if pd.notna(atr_val) and pd.notna(avg_atr) and avg_atr > 0:
-                                volatility_ratio = atr_val / avg_atr
-                                if volatility_ratio > 1.5: tighten_percentage = 0.003
-                                elif volatility_ratio > 1.0: tighten_percentage = 0.005
-                            initial_risk_dist = abs(global_active_trade['entry_price'] - global_active_trade['initial_sl'])
+                        if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0 and current_atr > 0:
+                            volatility_ratio = current_atr / average_atr
+                            if volatility_ratio >= 2.0: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 2.0, 3.0
+                            elif volatility_ratio >= 1.25: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.5, 2.5
+                            elif volatility_ratio >= 0.75: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.0, 2.0
+                            else: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 0.5, 1.5
+                            
+                            # Activation is ALWAYS based on initial SL
+                            initial_risk_price_diff = abs(details['entry_price'] - details['initial_sl'])
+                            move_from_entry_price = (previous_candle['high'] - details['entry_price']) if details['type'] == "BUY" else (details['entry_price'] - previous_candle['low'])
+                            r_multiple_achieved = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
+                            
+                            if r_multiple_achieved >= TRAIL_ACTIVATION_ATR:
+                                offensive_conditions_met = True
+                        
+                        # 2. Check Defensive Conditions
+                        is_still_valid = is_backtest_setup_still_valid(trade_symbol, details['type'], previous_candle, symbol_df)
+                        if is_still_valid:
+                            if details['invalid_signal_streak'] > 0: logger.info(f"[{trade_symbol}] Signal VALID again.")
+                            details['invalid_signal_streak'] = 0
+                        else:
+                            details['invalid_signal_streak'] += 1
+                        
+                        defensive_conditions_met = (details['invalid_signal_streak'] >= 4)
+
+                        # --- PRIORITY-BASED ACTION ---
+                        
+                        # PRIORITY 1: Offensive TSL
+                        if offensive_conditions_met:
+                            # --- THIS IS THE "HAND-OFF" LOGIC ---
+                            if not details['trailing_active']:
+                                logger.info(f"[{trade_symbol}] OFFENSIVE TSL ACTIVATED at {r_multiple_achieved:.2f}R. Performing initial move.")
+                                details['trailing_active'] = True # Set the flag to TRUE for all subsequent moves
+                            # ------------------------------------
+                            
+                            new_sl_price = 0
+                            if details['type'] == "BUY":
+                                potential_new_sl = previous_candle['high'] - (TRAIL_DISTANCE_ATR * current_atr)
+                                if potential_new_sl > details['sl']: new_sl_price = potential_new_sl
+                            else: # SELL
+                                potential_new_sl = previous_candle['low'] + (TRAIL_DISTANCE_ATR * current_atr)
+                                if potential_new_sl < details['sl']: new_sl_price = potential_new_sl
+                            
+                            if new_sl_price > 0:
+                                rounded_new_sl = round(new_sl_price, props['digits'])
+                                if rounded_new_sl != details['sl']:
+                                    logger.info(f"[{trade_symbol}] Offensive TSL: Moving SL to {rounded_new_sl}")
+                                    details['sl'] = rounded_new_sl
+                        
+                        # PRIORITY 2: Defensive TSL
+                        elif defensive_conditions_met:
+                            # If we were in offensive mode, we must switch off
+                            if details['trailing_active']:
+                                logger.warning(f"[{trade_symbol}] Trade conditions changed. Switching from Offensive to DEFENSIVE mode.")
+                                details['trailing_active'] = False
+                            
+                            logger.warning(f"[{trade_symbol}] Signal INVALID (Streak: {details['invalid_signal_streak']}). Applying Defensive TSL.")
+                            
+                            tighten_percentage = 0.01 
+                            if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
+                                if current_atr > (average_atr * 1.5): tighten_percentage = 0.003
+                                elif current_atr > average_atr: tighten_percentage = 0.005
+                            
+                            initial_risk_dist = abs(details['entry_price'] - details['initial_sl'])
                             tighten_amount = initial_risk_dist * tighten_percentage
                             new_sl_price = 0
-                            if global_active_trade['type'] == "BUY":
-                                potential_new_sl = previous_candle['low'] - (2 * props['pip_value_calc'])
-                                if potential_new_sl > global_active_trade['sl']:
+                            
+                            if details['type'] == "BUY":
+                                potential_new_sl = details['sl'] + tighten_amount
+                                if potential_new_sl > details['sl'] and potential_new_sl < previous_candle['high']:
                                     new_sl_price = potential_new_sl
                             else: # SELL
-                                potential_new_sl = previous_candle['high'] + (2 * props['pip_value_calc'])
-                                if potential_new_sl < global_active_trade['sl']:
+                                potential_new_sl = details['sl'] - tighten_amount
+                                if potential_new_sl < details['sl'] and potential_new_sl > previous_candle['low']:
                                     new_sl_price = potential_new_sl
                             
                             if new_sl_price > 0:
                                 rounded_new_sl = round(new_sl_price, props['digits'])
-                                logger.warning(f"[{trade_symbol}] Defensive TSL: Tightening SL to {rounded_new_sl:.{props['digits']}f}")
-                                global_active_trade['sl'] = rounded_new_sl
+                                if rounded_new_sl != details['sl']:
+                                    logger.warning(f"[{trade_symbol}] Defensive TSL: Tightening SL to {rounded_new_sl}")
+                                    details['sl'] = rounded_new_sl
 
-                            # --- END OF BIAS-FREE DEFENSIVE LOGIC ---
+                        # PRIORITY 3: Idle State
+                        else:
+                            if details['trailing_active']:
+                                logger.info(f"[{trade_symbol}] Conditions changed. Switching from Offensive to IDLE mode.")
+                                details['trailing_active'] = False
+                            logger.debug(f"[{trade_symbol}] Trade is in IDLE state.")
 
-                        elif not global_active_trade['defensive_tsl_active']:
-                            # --- OFFENSIVE BRAIN IS ACTIVE ---
-                            # (This logic was already correct)
-                            atr_val = previous_candle.get('ATR')
-                            avg_atr = previous_candle.get('ATR_SMA20')
-                            if not (pd.isna(atr_val) or pd.isna(avg_atr) or avg_atr <= 0 or atr_val <= 0):
-                                volatility_ratio = atr_val / avg_atr
-                                if volatility_ratio >= 2.0: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 2.0, 3.0
-                                elif volatility_ratio >= 1.25: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.5, 2.5
-                                elif volatility_ratio >= 0.75: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.0, 2.0
-                                else: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 0.5, 1.5
-                                initial_risk_price_diff = global_active_trade['r_value_price_diff']
-                                move_from_entry_price = (previous_candle['high'] - global_active_trade['entry_price']) if global_active_trade['type'] == "BUY" else (global_active_trade['entry_price'] - previous_candle['low'])
-                                r_multiple_achieved = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
-                                if not global_active_trade['trailing_active'] and r_multiple_achieved >= TRAIL_ACTIVATION_ATR:
-                                    global_active_trade['trailing_active'] = True
-                                    logger.info(f"[{trade_symbol}] Vol Ratio: {volatility_ratio:.2f}. Offensive TSL ACTIVATED.")
-                                if global_active_trade['trailing_active']:
-                                    new_sl_price = 0
-                                    if global_active_trade['type'] == "BUY":
-                                        potential_new_sl = previous_candle['high'] - (TRAIL_DISTANCE_ATR * atr_val)
-                                        if potential_new_sl > global_active_trade['sl']: new_sl_price = potential_new_sl
-                                    else:
-                                        potential_new_sl = previous_candle['low'] + (TRAIL_DISTANCE_ATR * atr_val)
-                                        if potential_new_sl < global_active_trade['sl']: new_sl_price = potential_new_sl
-                                    if new_sl_price > 0:
-                                        rounded_new_sl = round(new_sl_price, props['digits'])
-                                        global_active_trade['sl'] = rounded_new_sl
 
             # --- MANAGE PENDING ORDER (if no active trade) ---
             if not global_active_trade and global_pending_order:

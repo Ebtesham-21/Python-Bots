@@ -87,11 +87,11 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[("12:30") ], "USDCHF":[("12:30")],   "GBPJPY":[], "GBPUSD":[ ("12:30")],
-                           "AUDJPY":[("1:30")],   "EURNZD":[], "NZDUSD":[("12:30")], "AUDUSD":[("1:30") , ("12:30") ], "USDCAD":[ ("12:30")], "USDJPY":[("12:30") ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[("1:30")], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[("1:30")], "AUDCHF":[("1:30")], "AUDNZD":[("1:30")], "EURAUD":[("1:30")],
-                       "USOIL":[("12:30")], "UKOIL":[], "XAUUSD":[("12:30")], "XAGUSD":[("12:30")],
-                       "BTCUSD":[("12:30")], "BTCJPY":[("12:30")], "BTCXAU":[("12:30")], "ETHUSD":[("12:30")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[ ],
+                           "AUDJPY":[],   "EURNZD":[], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[ ], "USDJPY":[ ], "EURJPY":[],"EURCHF":[], "CADCHF":[], "CADJPY":[], "EURCAD":[],
+                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
+                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
+                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
 
 }
