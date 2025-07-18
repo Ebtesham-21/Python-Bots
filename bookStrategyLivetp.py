@@ -498,8 +498,19 @@ def calculate_pullback_depth(impulse_start, impulse_end, current_price, trade_ty
     pullback = (impulse_end - current_price) if trade_type == "BUY" else (current_price - impulse_end)
     return max(0.0, pullback / total_leg)
 
+# --- This is the FINAL, CORRECTED function for your live bot script ---
+
 def calculate_fib_levels(swing_high, swing_low):
-    return {"0.382": swing_low + 0.382 * (swing_high - swing_low),"0.5": swing_low + 0.5 * (swing_high - swing_low),"0.618": swing_low + 0.618 * (swing_high - swing_low)}
+    fibs = {
+        "0.0": swing_low,
+        "0.236": swing_low + 0.236 * (swing_high - swing_low),
+        "0.382": swing_low + 0.382 * (swing_high - swing_low),
+        "0.5": swing_low + 0.5 * (swing_high - swing_low),
+        "0.618": swing_low + 0.618 * (swing_high - swing_low),
+        "0.786": swing_low + 0.786 * (swing_high - swing_low),
+        "1.0": swing_high
+    }
+    return fibs
 
 def place_pending_order(symbol, props, order_type, entry_price, sl_price, lot_size, comment):
     trade_type = mt5.ORDER_TYPE_BUY_STOP if order_type == "BUY_STOP" else mt5.ORDER_TYPE_SELL_STOP
@@ -617,6 +628,8 @@ def is_trade_setup_still_valid(symbol, trade_type, last_closed_candle, full_m5_d
 
 # +++ FULLY REVISED manage_open_positions FUNCTION +++
 
+# +++ FINALIZED manage_open_positions FUNCTION (with Offensive "Hand-Off" from Initial SL) +++
+
 def manage_open_positions():
     open_positions = mt5.positions_get(magic=202405)
     if not open_positions: return
@@ -624,11 +637,10 @@ def manage_open_positions():
     for position in open_positions:
         pos_id_str = str(position.ticket)
 
-        # --- BLOCK 1: NEW POSITION INITIALIZATION (No changes here, remains the same) ---
+        # --- BLOCK 1: NEW POSITION INITIALIZATION (No change) ---
         if pos_id_str not in logged_open_position_ids:
             props = ALL_SYMBOL_PROPERTIES[position.symbol]
             tp_price = 0.0
-
             pending_details = trade_details_for_closure.get(pos_id_str)
             if pending_details and pending_details.get("is_pending"):
                 tp_price = pending_details['tp_price']
@@ -637,33 +649,15 @@ def manage_open_positions():
                 logger.warning(f"[{position.symbol}] New position {pos_id_str} detected, but no pending TP details found. Applying fallback 4R TP.")
                 risk_val_diff = abs(position.price_open - position.sl)
                 tp_price = round(position.price_open + (4 * risk_val_diff) if position.type == mt5.ORDER_TYPE_BUY else position.price_open - (4 * risk_val_diff), props['digits'])
-
             modify_position_sltp(position, position.sl, tp_price)
-
             risk_amount = (abs(position.price_open - position.sl) / props['trade_tick_size']) * props['trade_tick_value'] * position.volume if props['trade_tick_size'] > 0 else 0
-            trade_data = {
-                "TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol,
-                "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL",
-                "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(),
-                "EntryPrice": position.price_open, "LotSize": position.volume,
-                "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "",
-                "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "",
-                "RiskedAmount": f"{risk_amount:.2f}"
-            }
+            trade_data = { "TicketID": position.ticket, "PositionID": position.ticket, "Symbol": position.symbol, "Type": "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL", "OpenTimeUTC": pd.to_datetime(position.time, unit='s', utc=True).isoformat(), "EntryPrice": position.price_open, "LotSize": position.volume, "SL_Price": position.sl, "TP_Price": tp_price, "CloseTimeUTC": "", "ExitPrice": "", "PNL_AccountCCY": "", "OpenComment": position.comment, "CloseReason": "", "RiskedAmount": f"{risk_amount:.2f}" }
             append_trade_to_csv(trade_data)
             logged_open_position_ids.add(pos_id_str)
-            
-            trade_details_for_closure[pos_id_str] = {
-                'symbol': position.symbol,
-                'original_sl': position.sl,
-                'current_sl': position.sl,
-                'trailing_active': False,
-                'defensive_tsl_active': False,
-                'invalid_signal_streak': 0,
-            }
+            trade_details_for_closure[pos_id_str] = { 'symbol': position.symbol, 'original_sl': position.sl, 'current_sl': position.sl, 'trailing_active': False, 'invalid_signal_streak': 0 }
             continue
 
-        # --- BLOCK 2: ONGOING POSITION MANAGEMENT ---
+        # --- BLOCK 2: ONGOING POSITION MANAGEMENT (Synchronized with Backtester) ---
         details = trade_details_for_closure.get(pos_id_str)
         if not details: continue
         
@@ -671,112 +665,108 @@ def manage_open_positions():
         if last_closed_candle is None:
             logger.warning(f"Could not get data for TSL on position {position.ticket}. Skipping.")
             continue
+            
+        # --- DYNAMIC STATE ASSESSMENT ON EVERY CANDLE ---
+
+        # 1. Check Offensive Conditions
+        offensive_conditions_met = False
+        current_atr = last_closed_candle.get('ATR')
+        average_atr = last_closed_candle.get('ATR_SMA20')
         
-        # If the Defensive brain is active, it takes priority. Skip the Offensive brain.
-        if details['defensive_tsl_active']:
-            # --- "Defensive Brain" logic is handled below ---
-            pass
-        else:
-            # --- "Offensive Brain": Volatility-Adjusted TSL (SYNCHRONIZED WITH BACKTESTER) ---
-            current_atr = last_closed_candle.get('ATR')
-            average_atr = last_closed_candle.get('ATR_SMA20')
+        if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0 and current_atr > 0:
+            volatility_ratio = current_atr / average_atr
+            if volatility_ratio >= 2.0: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 2.0, 3.0
+            elif volatility_ratio >= 1.25: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.5, 2.5
+            elif volatility_ratio >= 0.75: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.0, 2.0
+            else: TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 0.5, 1.5
 
-            # Guard clause to ensure we have valid data for the adaptive logic
-            if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0 and current_atr > 0:
-                
-                # --- START OF SYNCHRONIZED LOGIC (from backtester) ---
-                volatility_ratio = current_atr / average_atr
-                
-                # Set TSL parameters based on the volatility regime
-                if volatility_ratio >= 2.0:         # Very High Volatility
-                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 2.0, 3.0
-                elif volatility_ratio >= 1.25:      # High Volatility
-                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.5, 2.5
-                elif volatility_ratio >= 0.75:      # Normal Volatility
-                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 1.0, 2.0
-                else:                               # Low Volatility
-                    TRAIL_ACTIVATION_ATR, TRAIL_DISTANCE_ATR = 0.5, 1.5
-                # --- END OF SYNCHRONIZED LOGIC ---
+            # Activation is ALWAYS based on the trade's original SL
+            initial_risk_price_diff = abs(position.price_open - details['original_sl'])
+            
+            move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
+            r_multiple_achieved = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
 
-                initial_risk_price_diff = abs(position.price_open - details['original_sl'])
-                move_from_entry_price = (last_closed_candle['high'] - position.price_open) if position.type == mt5.ORDER_TYPE_BUY else (position.price_open - last_closed_candle['low'])
-                r_multiple_achieved = move_from_entry_price / initial_risk_price_diff if initial_risk_price_diff > 0 else 0
+            if r_multiple_achieved >= TRAIL_ACTIVATION_ATR:
+                offensive_conditions_met = True
 
-                if not details['trailing_active'] and r_multiple_achieved >= TRAIL_ACTIVATION_ATR:
-                    details['trailing_active'] = True
-                    logger.info(f"[{position.symbol}] Vol Ratio: {volatility_ratio:.2f}. OFFENSIVE TSL ACTIVATED for pos {position.ticket} at {r_multiple_achieved:.2f}R.")
-
-                if details['trailing_active']:
-                    new_sl_price = 0
-                    if position.type == mt5.ORDER_TYPE_BUY:
-                        potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * current_atr)
-                        if potential_new_sl > details['current_sl']:
-                            new_sl_price = potential_new_sl
-                    else: # SELL trade
-                        potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * current_atr)
-                        if potential_new_sl < details['current_sl']:
-                            new_sl_price = potential_new_sl
-
-                    if new_sl_price > 0:
-                        props = ALL_SYMBOL_PROPERTIES[position.symbol]
-                        rounded_new_sl = round(new_sl_price, props['digits'])
-                        if rounded_new_sl != details['current_sl']:
-                            logger.info(f"[{position.symbol}] Offensive TSL Update: Moving SL for {position.ticket} to {rounded_new_sl}")
-                            if modify_position_sltp(position, rounded_new_sl, position.tp):
-                                details['current_sl'] = rounded_new_sl
-                    
-                    continue # If offensive TSL is active and ran, skip the defensive check for this cycle
-
-        # --- "Defensive Brain": Signal-Degradation SL Tightening (No changes here, remains the same) ---
+        # 2. Check Defensive Conditions
         trade_type = "BUY" if position.type == mt5.ORDER_TYPE_BUY else "SELL"
         is_still_valid = is_trade_setup_still_valid(position.symbol, trade_type, last_closed_candle, full_m5_df)
-
         if is_still_valid:
             if details['invalid_signal_streak'] > 0:
-                logger.info(f"[{position.symbol}] Signal for position {position.ticket} has become VALID again. Resetting defensive measures.")
-                details['invalid_signal_streak'] = 0
-                details['defensive_tsl_active'] = False
+                 logger.info(f"[{position.symbol}] Signal for pos {position.ticket} is VALID again. Streak reset.")
+            details['invalid_signal_streak'] = 0
         else:
             details['invalid_signal_streak'] += 1
-            logger.warning(f"[{position.symbol}] Signal for position {position.ticket} is INVALID. Streak: {details['invalid_signal_streak']}/4.")
+        
+        defensive_conditions_met = (details['invalid_signal_streak'] >= 4)
+        
+        # --- PRIORITY-BASED ACTION ---
+        
+        # PRIORITY 1: Offensive TSL
+        if offensive_conditions_met:
+            if not details['trailing_active']:
+                logger.info(f"[{position.symbol}] OFFENSIVE TSL ACTIVATED for pos {position.ticket} at {r_multiple_achieved:.2f}R.")
+                details['trailing_active'] = True
+            
+            new_sl_price = 0
+            if position.type == mt5.ORDER_TYPE_BUY:
+                potential_new_sl = last_closed_candle['high'] - (TRAIL_DISTANCE_ATR * current_atr)
+                # Compare against the CURRENT sl
+                if potential_new_sl > details['current_sl']: new_sl_price = potential_new_sl
+            else: # SELL
+                potential_new_sl = last_closed_candle['low'] + (TRAIL_DISTANCE_ATR * current_atr)
+                # Compare against the CURRENT sl
+                if potential_new_sl < details['current_sl']: new_sl_price = potential_new_sl
+            
+            if new_sl_price > 0:
+                props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                rounded_new_sl = round(new_sl_price, props['digits'])
+                if rounded_new_sl != details['current_sl']:
+                    logger.info(f"[{position.symbol}] Offensive TSL: Moving SL for {position.ticket} to {rounded_new_sl}")
+                    if modify_position_sltp(position, rounded_new_sl, position.tp):
+                        details['current_sl'] = rounded_new_sl
+        
+        # PRIORITY 2: Defensive TSL
+        elif defensive_conditions_met:
+            if details['trailing_active']:
+                logger.warning(f"[{position.symbol}] Pos {position.ticket} no longer profitable for Offensive TSL. Switching to DEFENSIVE mode.")
+                details['trailing_active'] = False
+            
+            logger.warning(f"[{position.symbol}] Signal for pos {position.ticket} is INVALID (Streak: {details['invalid_signal_streak']}). Applying Defensive TSL.")
+            
+            tighten_percentage = 0.01 
+            if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
+                if current_atr > (average_atr * 1.5): tighten_percentage = 0.003
+                elif current_atr > average_atr: tighten_percentage = 0.005
+            
+            initial_risk_dist = abs(position.price_open - details['original_sl'])
+            tighten_amount = initial_risk_dist * tighten_percentage
+            new_sl_price = 0
+            if position.type == mt5.ORDER_TYPE_BUY:
+                potential_new_sl = details['current_sl'] + tighten_amount
+                if potential_new_sl > details['current_sl'] and potential_new_sl < position.price_current:
+                    new_sl_price = potential_new_sl
+            else: # SELL
+                potential_new_sl = details['current_sl'] - tighten_amount
+                if potential_new_sl < details['current_sl'] and potential_new_sl > position.price_current:
+                    new_sl_price = potential_new_sl
+            
+            if new_sl_price > 0:
+                props = ALL_SYMBOL_PROPERTIES[position.symbol]
+                rounded_new_sl = round(new_sl_price, props['digits'])
+                if rounded_new_sl != details['current_sl']:
+                    logger.warning(f"[{position.symbol}] Defensive TSL: Tightening SL for {position.ticket} to {rounded_new_sl}")
+                    if modify_position_sltp(position, rounded_new_sl, position.tp):
+                        details['current_sl'] = rounded_new_sl
 
-            if not details['defensive_tsl_active'] and details['invalid_signal_streak'] >= 4:
-                details['defensive_tsl_active'] = True
-                logger.warning(f"[{position.symbol}] DEFENSIVE TSL ACTIVATED for position {position.ticket} after 4 consecutive invalid signals.")
-
-            if details['defensive_tsl_active']:
-                current_atr = last_closed_candle.get('ATR')
-                average_atr = last_closed_candle.get('ATR_SMA20')
-                tighten_percentage = 0.01 
-
-                if pd.notna(current_atr) and pd.notna(average_atr) and average_atr > 0:
-                    if current_atr > (average_atr * 1.5):
-                        tighten_percentage = 0.003
-                    elif current_atr > average_atr:
-                        tighten_percentage = 0.005
-                    else:
-                        tighten_percentage = 0.01
-                
-                initial_risk_dist = abs(position.price_open - details['original_sl'])
-                tighten_amount = initial_risk_dist * tighten_percentage
-
-                new_sl_price = 0
-                if position.type == mt5.ORDER_TYPE_BUY:
-                    potential_new_sl = details['current_sl'] + tighten_amount
-                    if potential_new_sl > details['current_sl'] and potential_new_sl < position.price_current:
-                        new_sl_price = potential_new_sl
-                else: # SELL
-                    potential_new_sl = details['current_sl'] - tighten_amount
-                    if potential_new_sl < details['current_sl'] and potential_new_sl > position.price_current:
-                        new_sl_price = potential_new_sl
-                
-                if new_sl_price > 0:
-                    props = ALL_SYMBOL_PROPERTIES[position.symbol]
-                    rounded_new_sl = round(new_sl_price, props['digits'])
-                    if rounded_new_sl != details['current_sl']:
-                        logger.warning(f"[{position.symbol}] Defensive TSL Update: Adaptively tightening SL for {position.ticket} to {rounded_new_sl} (Step: {tighten_percentage*100:.1f}%)")
-                        if modify_position_sltp(position, rounded_new_sl, position.tp):
-                            details['current_sl'] = rounded_new_sl
+        # PRIORITY 3: Idle State
+        else:
+            if details['trailing_active']:
+                logger.info(f"[{position.symbol}] Pos {position.ticket} no longer profitable for Offensive TSL. Returning to IDLE state.")
+                details['trailing_active'] = False
+            
+            logger.debug(f"[{position.symbol}] Pos {position.ticket} is in IDLE state. (Setup valid, not yet in profit for TSL).")
 
 def manage_pending_orders():
     pending_orders = mt5.orders_get(magic=202405)
