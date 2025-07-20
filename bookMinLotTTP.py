@@ -632,8 +632,8 @@ def is_backtest_setup_still_valid(symbol, trade_type, candle, symbol_df):
 # --- Main Execution ---
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2020, 1, 1)
-    end_datetime = datetime(2025, 6, 30)
+    start_datetime = datetime(2025, 7, 17)
+    end_datetime = datetime(2025, 7, 18)
     
     # ✅ Call initialization function once
     initialize_trade_history_file()
@@ -811,11 +811,11 @@ if __name__ == "__main__":
                         vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
 
                         if vol_ratio > 1.5:
-                            max_streak = 6  # tighter, for volatile markets
+                            max_streak = 10  # tighter, for volatile markets
                         elif vol_ratio < 0.75:
-                            max_streak = 10  # more breathing room for low-volatility chop
+                            max_streak = 14  # more breathing room for low-volatility chop
                         else:
-                            max_streak = 8
+                            max_streak = 12
 
                         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
