@@ -632,7 +632,7 @@ def is_backtest_setup_still_valid(symbol, trade_type, candle, symbol_df):
 # --- Main Execution ---
 # --- Main Execution ---
 if __name__ == "__main__":
-    start_datetime = datetime(2025, 7, 17)
+    start_datetime = datetime(2020, 1, 1)
     end_datetime = datetime(2025, 7, 18)
     
     # ✅ Call initialization function once
@@ -815,7 +815,7 @@ if __name__ == "__main__":
                         elif vol_ratio < 0.75:
                             max_streak = 14  # more breathing room for low-volatility chop
                         else:
-                            max_streak = 12
+                            max_streak = 16
 
                         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
@@ -1119,9 +1119,9 @@ if __name__ == "__main__":
                         pip_adj_setup = 3 * props_setup['trade_tick_size']
                         
                         if is_crypto:
-                            sl_distance_atr = 4.0 * atr_val
+                            sl_distance_atr = 4.5 * atr_val
                         else:
-                            sl_distance_atr = 4.0 * atr_val
+                            sl_distance_atr = 4.5 * atr_val
 
                         entry_px, sl_px = (0, 0)
                         

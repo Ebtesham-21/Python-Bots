@@ -706,7 +706,7 @@ def manage_open_positions():
         elif vol_ratio < 0.75:
             max_streak = 14  # more breathing room for low-volatility chop
         else:
-            max_streak = 12
+            max_streak = 16
 
         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
         
@@ -905,7 +905,7 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
             continue
 
         # --- SL Calculation (remains consistent across all entry strategies) ---
-        sl_distance_atr = 4.0 * atr_val
+        sl_distance_atr = 4.5 * atr_val
 
         # --- Entry Price Calculation (based on the chosen strategy) ---
         entry_px, sl_px = (0, 0)
