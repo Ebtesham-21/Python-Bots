@@ -1148,15 +1148,34 @@ if __name__ == "__main__":
                         # B. Determine Dynamic SL Lookback Period based on M5 Volatility
                         current_atr_for_sl = previous_candle.get('ATR')
                         average_atr_for_sl = previous_candle.get('ATR_SMA20')
-                        h1_lookback_period = 4  # Default to 4 (for low and neutral volatility)
+                        
+                        # Check if the current symbol is a crypto asset
+                        is_crypto_for_sl = sym_to_check_setup in CRYPTO_SYMBOLS
 
+                            # Apply different base lookback periods for crypto vs. non-crypto
+                        if is_crypto_for_sl:
+                            # For crypto, the base lookback is 6, extending to 8 in high volatility. It will never be 4.
+                            h1_lookback_period = 6 
+                        else:
+                            # For non-crypto, the base lookback remains 4
+                            h1_lookback_period = 4
+
+                            # Adjust the lookback based on volatility
                         if pd.notna(current_atr_for_sl) and pd.notna(average_atr_for_sl) and average_atr_for_sl > 0:
                             vol_ratio = current_atr_for_sl / average_atr_for_sl
-                            if vol_ratio >= 2.5:      # Very High Volatility -> Widest SL
-                                h1_lookback_period = 8
-                            elif vol_ratio >= 1.75:   # High Volatility -> Wider SL
-                                h1_lookback_period = 6
-                            # If neither, lookback remains the default of 4.
+                            
+                            if is_crypto_for_sl:
+                                # Crypto-specific volatility logic: Jumps from 6 to 8
+                                if vol_ratio >= 2.0:  # Threshold for high volatility in crypto
+                                    h1_lookback_period = 8
+                            else:
+                                # Original logic for non-crypto assets
+                                if vol_ratio >= 2.5:      # Very High Volatility -> Widest SL
+                                    h1_lookback_period = 8
+                                elif vol_ratio >= 1.75:   # High Volatility -> Wider SL
+                                    h1_lookback_period = 6
+                        
+                        logger.debug(f"[{sym_to_check_setup}] Dynamic SL lookback set to {h1_lookback_period} H1 candles.")
 
                         # C. Calculate Stop Loss using the Dynamic Lookback on GUARANTEED CLOSED H1 candles
                         h1_dataframe = prepared_symbol_data[sym_to_check_setup].get('H1_data')

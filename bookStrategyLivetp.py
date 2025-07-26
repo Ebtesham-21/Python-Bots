@@ -877,11 +877,34 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
         # B. Determine Dynamic SL Lookback Period
         current_atr_for_sl = last_closed_candle.get('ATR')
         average_atr_for_sl = last_closed_candle.get('ATR_SMA20')
-        h1_lookback_period = 4
+        
+        # Check if the current symbol is a crypto asset
+        is_crypto_for_sl = symbol in CRYPTO_SYMBOLS
+
+        # NEW LOGIC: Apply different base lookback periods for crypto vs. non-crypto
+        if is_crypto_for_sl:
+            # For crypto, the base lookback is 6, extending to 8 in high volatility. It will never be 4.
+            h1_lookback_period = 6 
+        else:
+            # For non-crypto, the base lookback remains 4
+            h1_lookback_period = 4
+
+        # Adjust the lookback based on volatility
         if pd.notna(current_atr_for_sl) and pd.notna(average_atr_for_sl) and average_atr_for_sl > 0:
             vol_ratio = current_atr_for_sl / average_atr_for_sl
-            if vol_ratio >= 2.5: h1_lookback_period = 8
-            elif vol_ratio >= 1.75: h1_lookback_period = 6
+            
+            if is_crypto_for_sl:
+                # Crypto-specific volatility logic: Jumps from 6 to 8
+                if vol_ratio >= 2.0:  # Threshold for high volatility in crypto
+                    h1_lookback_period = 8
+            else:
+                # Original logic for non-crypto assets
+                if vol_ratio >= 2.5:      # Very High Volatility -> Widest SL
+                    h1_lookback_period = 8
+                elif vol_ratio >= 1.75:   # High Volatility -> Wider SL
+                    h1_lookback_period = 6
+        
+        logger.debug(f"[{symbol}] Dynamic SL lookback set to {h1_lookback_period} H1 candles.")
 
         # C. Calculate Stop Loss using ONLY CLOSED H1 candles
         # KEY LOGIC: df_h1.iloc[:-1] correctly excludes the currently forming H1 candle.
