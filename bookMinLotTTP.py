@@ -659,7 +659,7 @@ if __name__ == "__main__":
         daily_risk_allocated_on_current_date = 0.0
         max_daily_risk_budget_for_current_date = 0.0
 
-        consecutive_losses_count = 0
+        
 
         logger.info(f"Global Initial Account Balance: {shared_account_balance:.2f} USD")
         logger.info(f"Backtesting Period: {start_datetime.strftime('%Y-%m-%d')} to {end_datetime.strftime('%Y-%m-%d')}")
@@ -667,8 +667,9 @@ if __name__ == "__main__":
         logger.info(f"--- SIMULATION: Spread = {SPREAD_PIPS} pips, Slippage = {SLIPPAGE_PIPS} pips ---")
         logger.info("One trade at a time across the entire portfolio.")
         logger.info("Lot size will be fixed to minimum volume. Risk guard active for min lot.")
-        logger.info("--- NEW: Trading will halt for the day after 5 consecutive losses.")
+      
         logger.info("--- NEW: Setups are queued and confirmed 2 candles later before placing a pending order.")
+        logger.info("--- NEW: Stop Loss lookback is dynamic (4-8 H1 candles) based on M5 volatility.") # <-- ADD THIS LINE
 
 
         # === MODIFIED: Handle the new data dictionary structure ===
@@ -706,7 +707,7 @@ if __name__ == "__main__":
                 current_simulation_date = candle_date
                 daily_risk_allocated_on_current_date = 0.0
                 max_daily_risk_budget_for_current_date = shared_account_balance * DAILY_RISK_LIMIT_PERCENT
-                consecutive_losses_count = 0
+                
                 logger.debug(f"Portfolio New Day: {current_simulation_date}. Max Daily Risk: {max_daily_risk_budget_for_current_date:.2f} (Bal: {shared_account_balance:.2f}). Daily risk & loss counters reset.")
 
            
@@ -765,8 +766,7 @@ if __name__ == "__main__":
                         global_active_trade['commission'] = commission_cost; global_active_trade['pnl_currency'] = raw_pnl - commission_cost
                         shared_account_balance += global_active_trade['pnl_currency']
                         equity_curve_over_time.append((timestamp, shared_account_balance))
-                        if global_active_trade['pnl_currency'] < 0: consecutive_losses_count += 1
-                        else: consecutive_losses_count = 0
+                       
                         global_active_trade['balance_after_trade'] = shared_account_balance
                         logger.info(f"[{trade_symbol}] {timestamp} Trade CLOSED ({global_active_trade['status']}): Net P&L: {global_active_trade['pnl_currency']:.2f}, New Bal: {shared_account_balance:.2f}")
                         all_closed_trades_portfolio.append(global_active_trade.copy())
@@ -815,7 +815,7 @@ if __name__ == "__main__":
                         elif vol_ratio < 0.75:
                             max_streak = 14  # more breathing room for low-volatility chop
                         else:
-                            max_streak = 16
+                            max_streak = 14
 
                         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
@@ -994,7 +994,8 @@ if __name__ == "__main__":
                             delayed_setups_queue.extend(remaining_setups)
                             break 
 
-                if not global_pending_order and consecutive_losses_count < 5 and daily_risk_allocated_on_current_date < max_daily_risk_budget_for_current_date:
+                if not global_pending_order and daily_risk_allocated_on_current_date < max_daily_risk_budget_for_current_date:
+                    # ... code to find new setups ...
                     for sym_to_check_setup in SYMBOLS_AVAILABLE_FOR_TRADE:
                         
                         try:
@@ -1113,29 +1114,97 @@ if __name__ == "__main__":
                         if not fib_confluence_found:
                             continue
                         
-                        lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
-                        
-                        is_crypto = sym_to_check_setup in CRYPTO_SYMBOLS
-                        pip_adj_setup = 3 * props_setup['trade_tick_size']
-                        
-                        if is_crypto:
-                            sl_distance_atr = 4.5 * atr_val
-                        else:
-                            sl_distance_atr = 4.5 * atr_val
+                               # --- NEW H1-BASED STOP LOSS LOGIC ---
 
-                        entry_px, sl_px = (0, 0)
-                        
+                        # A. Calculate Entry Price (This part remains the same)
+                       # --- NEW H1-BASED STOP LOSS LOGIC (CLOSED CANDLES ONLY) ---
+
+                        # A. Calculate Entry Price (This logic is based on M5 and remains unchanged)
+                                            # --- DYNAMIC H1-BASED STOP LOSS LOGIC ---
+
+                        # A. Calculate Entry Price (This logic is based on M5 and remains unchanged)
+                        lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
+                        pip_adj_setup = 3 * props_setup['trade_tick_size']
+                        entry_px = 0
                         if m5_setup_bias_setup == "BUY":
                             entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup
-                            sl_px = entry_px - sl_distance_atr
                         else: # SELL
                             entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup
-                            sl_px = entry_px + sl_distance_atr
-
                         entry_px = round(entry_px, props_setup['digits'])
-                        sl_px = round(sl_px, props_setup['digits'])
+
+                                                # B. Determine Dynamic SL Lookback Period based on M5 Volatility
+                                           # --- DYNAMIC H1-BASED STOP LOSS LOGIC (GUARANTEED CLOSED CANDLES) ---
+
+                        # A. Calculate Entry Price (Logic remains unchanged)
+                        lookback_df_for_entry = symbol_df.iloc[current_idx - 3 : current_idx]
+                        pip_adj_setup = 3 * props_setup['trade_tick_size']
+                        entry_px = 0
+                        if m5_setup_bias_setup == "BUY":
+                            entry_px = lookback_df_for_entry['high'].max() + pip_adj_setup
+                        else: # SELL
+                            entry_px = lookback_df_for_entry['low'].min() - pip_adj_setup
+                        entry_px = round(entry_px, props_setup['digits'])
+
+                        # B. Determine Dynamic SL Lookback Period based on M5 Volatility
+                        current_atr_for_sl = previous_candle.get('ATR')
+                        average_atr_for_sl = previous_candle.get('ATR_SMA20')
+                        h1_lookback_period = 4  # Default to 4 (for low and neutral volatility)
+
+                        if pd.notna(current_atr_for_sl) and pd.notna(average_atr_for_sl) and average_atr_for_sl > 0:
+                            vol_ratio = current_atr_for_sl / average_atr_for_sl
+                            if vol_ratio >= 2.5:      # Very High Volatility -> Widest SL
+                                h1_lookback_period = 8
+                            elif vol_ratio >= 1.75:   # High Volatility -> Wider SL
+                                h1_lookback_period = 6
+                            # If neither, lookback remains the default of 4.
+
+                        # C. Calculate Stop Loss using the Dynamic Lookback on GUARANTEED CLOSED H1 candles
+                        h1_dataframe = prepared_symbol_data[sym_to_check_setup].get('H1_data')
+                        if h1_dataframe is None or h1_dataframe.empty:
+                            continue
                         
+                        # FIX: Use 'h' instead of 'H' to avoid FutureWarning.
+                        # This logic correctly selects ONLY H1 candles that have already closed.
+                        current_hour_start = timestamp.floor('h')
+                        closed_h1_candles = h1_dataframe.loc[h1_dataframe.index < current_hour_start]
+
+                        # FIX: This check now correctly uses the 'closed_h1_candles' variable.
+                        if len(closed_h1_candles) < h1_lookback_period:
+                            logger.debug(f"[{sym_to_check_setup}] Setup skipped: Not enough closed H1 history ({len(closed_h1_candles)}) for lookback of {h1_lookback_period}.")
+                            continue
+
+                        # Isolate the most recent N fully closed H1 candles.
+                        last_n_h1_candles = closed_h1_candles.tail(h1_lookback_period)
+
+                        sl_px = 0
+                        sl_buffer = 3 * props_setup['trade_tick_size']
+
+                        if m5_setup_bias_setup == "BUY":
+                            sl_px = last_n_h1_candles['low'].min() - sl_buffer
+                        else: # SELL
+                            sl_px = last_n_h1_candles['high'].max() + sl_buffer
+                        
+                        sl_px = round(sl_px, props_setup['digits'])
+                    
+                        # D. Validate the new SL price and risk
+                        if (m5_setup_bias_setup == "BUY" and sl_px >= entry_px) or \
+                        (m5_setup_bias_setup == "SELL" and sl_px <= entry_px):
+                            logger.debug(f"[{sym_to_check_setup}] Setup skipped: Dynamic H1 SL ({sl_px}) is invalid relative to entry ({entry_px}).")
+                            continue
+
                         if abs(entry_px - sl_px) <= 0: continue
+
+                        lot_size_fixed_min = props_setup.get("volume_min", 0.01)
+                        estimated_risk_min_lot = lot_size_fixed_min * (abs(entry_px - sl_px) / props_setup['trade_tick_size']) * props_setup['trade_tick_value'] if props_setup['trade_tick_size'] > 0 else 0
+                        max_allowed_risk_per_trade = shared_account_balance * RISK_PER_TRADE_PERCENT
+
+                        if estimated_risk_min_lot > max_allowed_risk_per_trade:
+                            logger.debug(f"[{sym_to_check_setup}] Setup skipped. Dynamic SL (lookback {h1_lookback_period}) makes risk ({estimated_risk_min_lot:.2f}) too high.")
+                            continue
+                            
+                        # --- END OF DYNAMIC H1-BASED STOP LOSS LOGIC ---
+
+                        # --- END OF NEW H1-BASED STOP LOSS LOGIC ---
                         
                         h1_dataframe = prepared_symbol_data[sym_to_check_setup]['H1_data']
                         if h1_dataframe.empty:
