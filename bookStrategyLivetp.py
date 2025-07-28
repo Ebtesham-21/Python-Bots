@@ -329,6 +329,9 @@ def shutdown_mt5_interface():
     mt5.shutdown()
     logger.info("MetaTrader 5 Shutdown")
 
+
+    
+
 # --- Live Bot Helper Functions (unchanged) ---
 
 def is_weekend_utc():
