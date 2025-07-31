@@ -88,12 +88,12 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ], "USDCHF":[],   "GBPJPY":[], "GBPUSD":[],
-                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[], "USDJPY":[ ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[], "CADJPY":[], "EURCAD":[ ],
-                           "GBPCAD":[], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
-                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
-                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
-                       "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[],
+"EURUSD":[ ("12:30"), ("14:00")], "USDCHF":[ ("12:30"), ("14:00")],   "GBPJPY":[], "GBPUSD":[("12:30"), ("14:00")],
+                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[("12:30"), ("14:00")], "AUDUSD":[("12:30"), ("14:00") ], "USDCAD":[("12:30"), ("14:00")], "USDJPY":[("12:30"), ("14:00") ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[ ], "CADJPY":[ ], "EURCAD":[ ],
+                           "GBPCAD":[ ], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[ ], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
+                       "USOIL":[("12:30"), ("14:00")], "UKOIL":[], "XAUUSD":[("12:30"), ("14:00")], "XAGUSD":[("12:30"), ("14:00")],
+                       "BTCUSD":[("12:30"), ("14:00")], "BTCJPY":[("12:30"), ("14:00")], "BTCXAU":[("12:30"), ("14:00")], "ETHUSD":[("12:30"), ("14:00")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+                       "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[], "EA":[],
 
 }
 
