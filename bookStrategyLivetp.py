@@ -88,11 +88,11 @@ COMMISSIONS = {
 
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
-"EURUSD":[ ("12:30"), ("14:00")], "USDCHF":[ ("12:30"), ("14:00")],   "GBPJPY":[], "GBPUSD":[("12:30"), ("14:00")],
-                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[("12:30"), ("14:00")], "AUDUSD":[("12:30"), ("14:00") ], "USDCAD":[("12:30"), ("14:00")], "USDJPY":[("12:30"), ("14:00") ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[ ], "CADJPY":[ ], "EURCAD":[ ],
+"EURUSD":[ ], "USDCHF":[ ],   "GBPJPY":[], "GBPUSD":[],
+                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[], "USDJPY":[ ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[ ], "CADJPY":[ ], "EURCAD":[ ],
                            "GBPCAD":[ ], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[ ], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
-                       "USOIL":[("12:30"), ("14:00")], "UKOIL":[], "XAUUSD":[("12:30"), ("14:00")], "XAGUSD":[("12:30"), ("14:00")],
-                       "BTCUSD":[("12:30"), ("14:00")], "BTCJPY":[("12:30"), ("14:00")], "BTCXAU":[("12:30"), ("14:00")], "ETHUSD":[("12:30"), ("14:00")],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
+                       "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
+                       "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[], "EA":[],
 
 }
@@ -911,15 +911,32 @@ def check_for_new_signals(daily_risk_allocated, max_daily_risk):
 
         # C. Calculate Stop Loss using ONLY CLOSED H1 candles
         # KEY LOGIC: df_h1.iloc[:-1] correctly excludes the currently forming H1 candle.
-        closed_h1_candles = df_h1.iloc[:-1] 
+               # C. Calculate Stop Loss using ONLY CLOSED H1 candles
+        # KEY LOGIC: df_h1.iloc[:-1] correctly excludes the currently forming H1 candle.
+        closed_h1_candles = df_h1.iloc[:-1]
 
         if len(closed_h1_candles) < h1_lookback_period:
             logger.debug(f"[{symbol}] Setup skipped: Not enough closed H1 history ({len(closed_h1_candles)}) for dynamic lookback of {h1_lookback_period} candles.")
             continue
 
         last_n_h1_candles = closed_h1_candles.tail(h1_lookback_period)
-        sl_buffer = 3 * props['trade_tick_size']
-        sl_px = round(last_n_h1_candles['low'].min() - sl_buffer if h1_trend_bias == "BUY" else last_n_h1_candles['high'].max() + sl_buffer, props['digits'])
+
+        # --- MODIFIED: Define a 10 pip buffer in price terms ---
+        # 'pip_value_calc' correctly stores the value of 1 pip (e.g., 0.0001 for EURUSD, 0.01 for USDJPY)
+        sl_buffer_in_pips = 10.0
+        sl_buffer_in_price_terms = sl_buffer_in_pips * props['pip_value_calc']
+
+        if h1_trend_bias == "BUY":
+            # Place SL 10 pips BELOW the low of the lookback period
+            sl_px = last_n_h1_candles['low'].min() - sl_buffer_in_price_terms
+        else:  # SELL
+            # Place SL 10 pips ABOVE the high of the lookback period
+            sl_px = last_n_h1_candles['high'].max() + sl_buffer_in_price_terms
+        
+        sl_px = round(sl_px, props['digits'])
+
+        # D. Validate SL, Risk, and TP
+        # ... (the rest of the function remains the same)
 
         # D. Validate SL, Risk, and TP
         if (h1_trend_bias == "BUY" and sl_px >= entry_px) or (h1_trend_bias == "SELL" and sl_px <= entry_px): continue

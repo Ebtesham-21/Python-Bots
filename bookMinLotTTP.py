@@ -1197,12 +1197,17 @@ if __name__ == "__main__":
                         last_n_h1_candles = closed_h1_candles.tail(h1_lookback_period)
 
                         sl_px = 0
-                        sl_buffer = 3 * props_setup['trade_tick_size']
+                        # --- MODIFIED: Define a 10 pip buffer in price terms ---
+                        # 'pip_value_calc' correctly stores the value of 1 pip (e.g., 0.0001 for EURUSD, 0.01 for USDJPY)
+                        sl_buffer_in_pips = 10.0
+                        sl_buffer_in_price_terms = sl_buffer_in_pips * props_setup['pip_value_calc']
 
                         if m5_setup_bias_setup == "BUY":
-                            sl_px = last_n_h1_candles['low'].min() - sl_buffer
+                            # Place SL 10 pips BELOW the low of the lookback period
+                            sl_px = last_n_h1_candles['low'].min() - sl_buffer_in_price_terms
                         else: # SELL
-                            sl_px = last_n_h1_candles['high'].max() + sl_buffer
+                            # Place SL 10 pips ABOVE the high of the lookback period
+                            sl_px = last_n_h1_candles['high'].max() + sl_buffer_in_price_terms
                         
                         sl_px = round(sl_px, props_setup['digits'])
                     

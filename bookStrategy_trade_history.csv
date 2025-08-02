@@ -6,12 +6,11 @@ TicketID,PositionID,Symbol,Type,OpenTimeUTC,EntryPrice,LotSize,SL_Price,TP_Price
 1610679371,1610679371,USDCHF,BUY,2025-07-14T07:27:27+00:00,0.79737,0.01,0.79645,0.79946,2025-07-14T10:02:15+00:00,0.79654,-1.14,LiveBot_v1_Delay,Closed by broker: [sl 0.79654],1.15
 1614943249,1614943249,GBPNZD,BUY,2025-07-16T08:06:11+00:00,2.25334,0.01,2.25059,2.26633,2025-07-16T08:55:50+00:00,2.25361,-0.03,LiveBot_v1_Delay,Closed by broker: [sl 2.25361],1.65
 
---- Performance Summary ---,Generated: 2025-08-01T15:38:07.276746+00:00 ---
+--- Performance Summary ---,Generated: 2025-08-02T13:48:39.027881+00:00 ---
 Metric,Value
 Total Closed Trades,6
 Winning Trades,4
 Losing Trades,2
 Total PNL (Account CCY),2.03
 Max Drawdown (USD),1.17
-Max Drawdown (%),0.65%
-1640990197,1640990197,NVDA,SELL,2025-08-01T15:10:20+00:00,174.66,0.01,175.99,169.34,,,,LiveBot_v1_Delay,,1.33
+Max Drawdown (%),0.66%
