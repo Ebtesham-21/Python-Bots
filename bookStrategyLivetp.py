@@ -723,9 +723,9 @@ def manage_open_positions():
             details['invalid_signal_streak'] += 1
         
         vol_ratio = current_atr / average_atr if pd.notna(current_atr) and average_atr > 0 else 1.0
-        if vol_ratio > 1.5: max_streak = 20
-        elif vol_ratio < 0.75: max_streak = 40
-        else: max_streak = 30
+        if vol_ratio > 1.5: max_streak = 10
+        elif vol_ratio < 0.75: max_streak = 30
+        else: max_streak = 20
         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
         
         # --- PRIORITY-BASED ACTION ---

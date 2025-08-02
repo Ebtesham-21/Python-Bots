@@ -812,11 +812,11 @@ if __name__ == "__main__":
                         vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
 
                         if vol_ratio > 1.5:
-                            max_streak = 20  # tighter, for volatile markets
+                            max_streak = 10  # tighter, for volatile markets
                         elif vol_ratio < 0.75:
-                            max_streak = 40  # more breathing room for low-volatility chop
+                            max_streak = 30  # more breathing room for low-volatility chop
                         else:
-                            max_streak = 30
+                            max_streak = 20
 
                         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
