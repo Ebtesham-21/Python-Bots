@@ -35,23 +35,23 @@ session_start_balance = 0.0 # Will be set on initialization
 
 SYMBOLS_TO_TRADE =  ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",   "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF", "CADCHF", "CADJPY", "EURCAD",
-                           "GBPCAD", "NZDCAD", "GBPAUD", "GBPNZD", "GBPCHF", "AUDCAD", "AUDCHF", "AUDNZD", "EURAUD",
+                           "GBPCAD", "NZDCAD", "GBPAUD", "GBPNZD", "GBPCHF", "AUDCAD", "AUDCHF", "AUDNZD", "EURAUD","NZDJPY",  "CHFJPY", "EURGBP",  "USDCNH","USDHKD", "USDMXN", 
                        "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500",
                        "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C",
 
                              ]
 TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)],
-                           "AUDJPY":[(0, 12)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
-                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,12)], "EURAUD":[(0,17)],
-                           "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(10, 17)],
+                           "EURUSD":[(8, 17)], "USDCHF":[(8, 17)],   "GBPJPY": [ (8, 17)], "GBPUSD": [ (8, 17)],
+                           "AUDJPY":[(8, 12)],  "XAUUSD": [(8, 17)], "XAGUSD": [(8, 17)], "EURNZD": [(8, 17)], "NZDUSD": [(8, 17)], "AUDUSD": [ (8, 17)], "USDCAD": [(8, 17)],"USDJPY":[(8,17)], "EURJPY": [ (8, 17)],"EURCHF": [(8, 17)], "CADCHF": [  (8, 17)], "CADJPY": [ (8,17)], "EURCAD":[(8, 17)],
+                           "GBPCAD": [(8, 17)], "NZDCAD":[(8,17)], "GBPAUD":[(8, 17)], "GBPNZD":[(8,17)], "GBPCHF":[(8,17)], "AUDCAD":[(8,17)], "AUDCHF":[(8,17)], "AUDNZD":[(8,12)], "EURAUD":[(8,17)],"NZDJPY":[(8,17)],"CHFJPY":[(8,17)], "EURGBP":[(8,17)],   "EURMXN":[(8,17)],     "USDCNH":[(8,17)],  "USDHKD":[(8,17)],  "USDMXN":[(8,17)], 
+                           "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(8, 17)],
                            "USTEC": [(10, 17)],"INTC":[(10, 17)], "MO":[(10, 17)], "BABA":[(10, 17)], "ABT":[(10, 17)], "LI":[(10, 17)], "TME":[(10, 17)], "ADBE":[(10, 17)], "MMM":[(10, 17)], "WMT":[(10, 17)], "PFE":[(10, 17)], "EQIX":[(10, 17)], "F":[(10, 17)], "ORCL":[(10, 17)], "BA":[(10, 17)], "NKE":[(10, 17)], "C":[(10, 17)],
 
 }
 
-TRADING_SESSIONS_UTC["USOIL"] = [(0, 17)]
-TRADING_SESSIONS_UTC["UKOIL"] = [(0, 17)]
+TRADING_SESSIONS_UTC["USOIL"] = [(8, 17)]
+TRADING_SESSIONS_UTC["UKOIL"] = [(8, 17)]
 CRYPTO_SESSIONS_USER = {"BTCUSD":[(0, 17)], "BTCJPY":[(0, 17)], "BTCXAU":[(0, 17)], "ETHUSD":[(0, 17)]}
 for crypto_sym, sess_val in CRYPTO_SESSIONS_USER.items():
     TRADING_SESSIONS_UTC[crypto_sym] = sess_val
@@ -78,9 +78,10 @@ ENTRY_PRICE_STRATEGY = 'BREAKOUT'
 COMMISSIONS = {
     "EURUSD":0.07, "USDCHF":0.10,   "GBPJPY":0.15, "GBPUSD":0.09,
     "AUDJPY":0.09,   "EURNZD":0.18, "NZDUSD":0.13, "AUDUSD":0.10, "USDCAD":0.10,"USDJPY":0.07, "EURJPY":0.11,"EURCHF":0.17, "CADCHF":0.09, "CADJPY":0.15, "EURCAD":0.13,
-    "GBPCAD":0.20, "NZDCAD":0.10, "GBPAUD":0.13, "GBPNZD":0.19, "GBPCHF":0.17, "AUDCAD":0.10, "AUDCHF":0.09, "AUDNZD":0.08, "EURAUD":0.13,
+    "GBPCAD":0.20, "NZDCAD":0.10, "GBPAUD":0.13, "GBPNZD":0.19, "GBPCHF":0.17, "AUDCAD":0.10, "AUDCHF":0.09, "AUDNZD":0.08, "EURAUD":0.13,"NZDJPY":0.16, "CHFJPY": 0.15,"EURGBP":0.18,  "USDCNH":0.30,"USDHKD":0.30, "USDMXN":0.30,
     "USOIL":0.16, "UKOIL":0.65, "XAUUSD":0.11, "XAGUSD":1.05,
-    "BTCUSD":0.16, "BTCJPY":0.25, "BTCXAU":0.20, "ETHUSD":0.30,"AAPL":0.05, "MSFT":0.17,
+    "BTCUSD":0.16, "BTCJPY":0.25, "BTCXAU":0.20, "ETHUSD":0.30,
+    
     "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07,
     "AMD":0.14, "NFLX":0.98 , "US500":0.03 ,
     "USTEC":0.03,
@@ -89,8 +90,8 @@ COMMISSIONS = {
 # --- News Filter Times (User Input) ---
 NEWS_TIMES_UTC = {
 "EURUSD":[ ], "USDCHF":[ ],   "GBPJPY":[], "GBPUSD":[],
-                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[], "USDJPY":[ ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[ ], "CADJPY":[ ], "EURCAD":[ ],
-                           "GBPCAD":[ ], "NZDCAD":[], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[ ], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
+                           "AUDJPY":[],   "EURNZD":[ ], "NZDUSD":[], "AUDUSD":[ ], "USDCAD":[("12:30")], "USDJPY":[ ], "EURJPY":[ ],"EURCHF":[ ], "CADCHF":[("12:30") ], "CADJPY":[ ("12:30")], "EURCAD":[("12:30") ], "EURGBP":[ ],  "USDCNH":[ ],"USDHKD":[], "USDMXN":[ ],
+                           "GBPCAD":[ ("12:30")], "NZDCAD":[("12:30")], "GBPAUD":[], "GBPNZD":[], "GBPCHF":[], "AUDCAD":[("12:30") ], "AUDCHF":[], "AUDNZD":[], "EURAUD":[],
                        "USOIL":[], "UKOIL":[], "XAUUSD":[], "XAGUSD":[],
                        "BTCUSD":[], "BTCJPY":[], "BTCXAU":[], "ETHUSD":[],"AAPL":[], "MSFT":[], "GOOGL":[], "AMZN":[], "NVDA":[], "META":[], "TSLA":[], "AMD":[], "NFLX":[], "US500":[],
                        "USTEC":[], "INTC":[], "MO":[], "BABA":[], "ABT":[], "LI":[], "TME":[], "ADBE":[], "MMM":[], "WMT":[], "PFE":[], "EQIX":[], "F":[], "ORCL":[], "BA":[], "NKE":[], "C":[], "EA":[],
@@ -723,9 +724,9 @@ def manage_open_positions():
             details['invalid_signal_streak'] += 1
         
         vol_ratio = current_atr / average_atr if pd.notna(current_atr) and average_atr > 0 else 1.0
-        if vol_ratio > 1.5: max_streak = 10
-        elif vol_ratio < 0.75: max_streak = 30
-        else: max_streak = 20
+        if vol_ratio > 1.5: max_streak = 15
+        elif vol_ratio < 0.75: max_streak = 50
+        else: max_streak = 40
         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
         
         # --- PRIORITY-BASED ACTION ---

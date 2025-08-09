@@ -36,6 +36,7 @@ SYMBOLS_TO_BACKTEST = ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                        "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500", 
                        "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C","EA",
+                       "NZDJPY", "CHFJPY", "EURGBP",  "USDCNH","USDHKD", "USDMXN", 
 
                              ]
 
@@ -47,14 +48,13 @@ STOCK_SYMBOLS = [
     "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C"
 ]
 
-TRADING_SESSIONS_UTC =  { # (start_hour_inclusive, end_hour_exclusive)
-                           "EURUSD":[(0, 17)], "USDCHF":[(0, 17)],   "GBPJPY": [ (0, 17)], "GBPUSD": [ (0, 17)], 
-                           "AUDJPY":[(0, 17)],  "XAUUSD": [(0, 17)], "XAGUSD": [(0, 17)], "EURNZD": [(0, 17)], "NZDUSD": [(0, 17)], "AUDUSD": [ (0, 17)], "USDCAD": [(0, 17)],"USDJPY":[(0,17)], "EURJPY": [ (0, 17)],"EURCHF": [(0, 17)], "CADCHF": [  (0, 17)], "CADJPY": [ (0,17)], "EURCAD":[(0, 17)],
-                           "GBPCAD": [(0, 17)], "NZDCAD":[(0,17)], "GBPAUD":[(0, 17)], "GBPNZD":[(0,17)], "GBPCHF":[(0,17)], "AUDCAD":[(0,17)], "AUDCHF":[(0,17)], "AUDNZD":[(0,17)], "EURAUD":[(0,17)], 
-                           "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(10, 17)], 
-                           "USTEC": [(10, 17)],"INTC":[(10, 17)], "MO":[(10, 17)], "BABA":[(10, 17)], "ABT":[(10, 17)], "LI":[(10, 17)], "TME":[(10, 17)], "ADBE":[(10, 17)], "MMM":[(10, 17)], "WMT":[(10, 17)], "PFE":[(10, 17)], "EQIX":[(10, 17)], "F":[(10, 17)], "ORCL":[(10, 17)], "BA":[(10, 17)], "NKE":[(10, 17)], "C":[(10, 17)],"EA":[(10, 17)],
-                          
-                          
+TRADING_SESSIONS_UTC = { # (start_hour_inclusive, end_hour_exclusive)
+                           "EURUSD":[(8, 17)], "USDCHF":[(8, 17)],   "GBPJPY": [ (8, 17)], "GBPUSD": [ (8, 17)],
+                           "AUDJPY":[(8, 12)],  "XAUUSD": [(8, 17)], "XAGUSD": [(8, 17)], "EURNZD": [(8, 17)], "NZDUSD": [(8, 17)], "AUDUSD": [ (8, 17)], "USDCAD": [(8, 17)],"USDJPY":[(8,17)], "EURJPY": [ (8, 17)],"EURCHF": [(8, 17)], "CADCHF": [  (8, 17)], "CADJPY": [ (8,17)], "EURCAD":[(8, 17)],
+                           "GBPCAD": [(8, 17)], "NZDCAD":[(8,17)], "GBPAUD":[(8, 17)], "GBPNZD":[(8,17)], "GBPCHF":[(8,17)], "AUDCAD":[(8,17)], "AUDCHF":[(8,17)], "AUDNZD":[(8,12)], "EURAUD":[(8,17)],"NZDJPY":[(8,17)],"CHFJPY":[(8,17)], "EURGBP":[(8,17)],   "EURMXN":[(8,17)],     "USDCNH":[(8,17)],  "USDHKD":[(8,17)],  "USDMXN":[(8,17)], 
+                           "AAPL": [(10, 17)] , "MSFT": [(10, 17)], "GOOGL": [(10, 17)], "AMZN": [(10, 17)], "NVDA": [(10, 17)], "META": [(10, 17)], "TSLA": [(10, 17)], "AMD": [(10, 17)], "NFLX": [(10, 17)], "US500": [(8, 17)],
+                           "USTEC": [(10, 17)],"INTC":[(10, 17)], "MO":[(10, 17)], "BABA":[(10, 17)], "ABT":[(10, 17)], "LI":[(10, 17)], "TME":[(10, 17)], "ADBE":[(10, 17)], "MMM":[(10, 17)], "WMT":[(10, 17)], "PFE":[(10, 17)], "EQIX":[(10, 17)], "F":[(10, 17)], "ORCL":[(10, 17)], "BA":[(10, 17)], "NKE":[(10, 17)], "C":[(10, 17)],
+
 }
 
 TRADING_SESSIONS_UTC["USOIL"] = [(0, 17)]
@@ -84,8 +84,7 @@ COMMISSIONS = {
                        "BTCUSD":0.16, "BTCJPY":0.25, "BTCXAU":0.20, "ETHUSD":0.30,"AAPL":0.05, "MSFT":0.17, 
                         "AAPL": 0.05, "MSFT":0.17, "GOOGL": 0.11, "AMZN": 0.05, "NVDA": 0.08, "META": 0.33, "TSLA": 0.07, 
                         "AMD":0.14, "NFLX":0.98 , "US500":0.03 , 
-                        "USTEC":0.03,"INTC":0.07, "MO":0.05, "BABA":0.13, "ABT":0.08, "LI":0.04, "TME":0.05, "ADBE":0.20, "MMM":0.10, "WMT":0.08, "PFE":0.07, "EQIX":0.87, "F":0.09, "ORCL":0.17, "BA":0.33, "NKE":0.10, "C":0.07,
-                      
+                        "USTEC":0.03,"INTC":0.07, "MO":0.05, "BABA":0.13, "ABT":0.08, "LI":0.04, "TME":0.05, "ADBE":0.20, "MMM":0.10, "WMT":0.08, "PFE":0.07, "EQIX":0.87, "F":0.09, "ORCL":0.17, "BA":0.33, "NKE":0.10, "C":0.07, "NZDJPY":0.16, "CHFJPY": 0.15, "EURGBP":0.18,  "USDCNH":0.30,"USDHKD":0.30, "USDMXN":0.30,
                             }
 
 # ✅ Step 3: 📌 Create a Function to Initialize the File
@@ -812,11 +811,11 @@ if __name__ == "__main__":
                         vol_ratio = current_atr / average_atr if average_atr > 0 else 1.0
 
                         if vol_ratio > 1.5:
-                            max_streak = 10  # tighter, for volatile markets
+                            max_streak = 15  # tighter, for volatile markets
                         elif vol_ratio < 0.75:
-                            max_streak = 30  # more breathing room for low-volatility chop
+                            max_streak = 50  # more breathing room for low-volatility chop
                         else:
-                            max_streak = 20
+                            max_streak = 40
 
                         defensive_conditions_met = (details['invalid_signal_streak'] >= max_streak)
 
