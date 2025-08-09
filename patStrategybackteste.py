@@ -38,7 +38,7 @@ CONFIG = {
     "IMPULSE_STRENGTH_FACTOR": 0.5,
     "SL_BUFFER_ATR_FACTOR": 1.5,
     "MIN_RR_RATIO": 2.0,
-    "TRADE_MAX_BARS_HELD": 6,
+    "VOLATILITY_EXIT_FACTOR": 0.5,
 }
 
 # --- 2. LOGGING SETUP ---
@@ -178,12 +178,13 @@ def run_backtest(dataframes):
         sim_account['equity_curve'].append({'time': timestamp, 'equity': sim_account['equity']})
 
         # Check for SL/TP/Time exit for open trades
+              # --- NEW REPLACEMENT CODE ---
         trades_to_close = []
         for trade in sim_account['open_trades']:
             if trade['symbol'] != symbol:
                 continue
 
-            # Check SL/TP - IMPORTANT: check if low/high of the BAR crossed the level
+            # Check for Primary Exits: SL/TP
             hit_sl = False
             hit_tp = False
             
@@ -199,11 +200,21 @@ def run_backtest(dataframes):
                 trades_to_close.append({'trade': trade, 'exit_price': trade['sl'], 'reason': 'SL'})
             elif hit_tp:
                 trades_to_close.append({'trade': trade, 'exit_price': trade['tp'], 'reason': 'TP'})
-            else:
-                # Check for time-based exit
-                bars_held = (timestamp - trade['entry_time']).total_seconds() / (5 * 60) # 5-min bars
-                if bars_held >= CONFIG['TRADE_MAX_BARS_HELD']:
-                    trades_to_close.append({'trade': trade, 'exit_price': row['close'], 'reason': 'Time Exit'})
+            
+            # --- NEW: Check for Volatility Drop Exit ---
+            # This check only runs if SL or TP was not already hit in this bar.
+            else: 
+                current_atr = row[f'ATRr_{CONFIG["ATR_PERIOD_SL"]}']
+                entry_atr = trade['entry_atr']
+                volatility_threshold = entry_atr * CONFIG['VOLATILITY_EXIT_FACTOR']
+                
+                if current_atr < volatility_threshold:
+                    trades_to_close.append({
+                        'trade': trade, 
+                        'exit_price': row['close'], # Exit at market (bar close)
+                        'reason': 'Volatility Exit'
+                    })
+        # --- END OF NEW CODE ---
 
         # Process closed trades
         for closure in trades_to_close:
@@ -314,15 +325,20 @@ def run_backtest(dataframes):
             if is_buy_fill or is_sell_fill:
                 volume = calculate_simulated_position_size(symbol)
                 
+                # ... inside the "if is_buy_fill or is_sell_fill:" block
                 if volume > 0:
+                    # Get the ATR(5) value at the moment of entry
+                    entry_atr_value = row[f'ATRr_{CONFIG["ATR_PERIOD_SL"]}']
+
                     trade = {
                         'symbol': symbol, 'type': state['daily_bias'], 'volume': volume,
                         'entry_price': entry_price, 'sl': state['stop_loss'], 'tp': state['take_profit'],
-                        'entry_time': timestamp, 'bars_held': 0,
+                        'entry_time': timestamp,
+                        'entry_atr': entry_atr_value, # <-- ADDED: Store the ATR at entry
                     }
                     sim_account['open_trades'].append(trade)
-                    state['zone_touched'] = True # Prevent re-entry on the same zone
-                    logger.info(f"[{timestamp}] FILLED {trade['type']} {trade['symbol']} @ {entry_price:.5f}, SL={trade['sl']:.5f}, TP={trade['tp']:.5f}, Vol={volume}")
+                    state['zone_touched'] = True 
+                    logger.info(f"[{timestamp}] FILLED {trade['type']} {trade['symbol']} @ {entry_price:.5f} (Entry ATR={entry_atr_value:.5f})")
 
     return sim_account
 
