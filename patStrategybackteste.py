@@ -14,8 +14,8 @@ EPS = 1e-12
 # --- 1. BACKTEST CONFIGURATION ---
 CONFIG = {
     # Backtest period
-    "BACKTEST_START_DATE": "2025-02-01",
-    "BACKTEST_END_DATE": "2025-02-28",
+    "BACKTEST_START_DATE": "2020-01-01",
+    "BACKTEST_END_DATE": "2025-07-30",
     # Trading symbols
     "SYMBOLS": ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",   "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF", "CADCHF", "CADJPY", "EURCAD",
@@ -43,6 +43,7 @@ CONFIG = {
     "SL_BUFFER_ATR_FACTOR": 1.5,
     "MIN_RR_RATIO": 2.0,
     "VOLATILITY_EXIT_FACTOR": 0.6,
+    "ACCOUNT_CURRENCY": "USD",
 }
 
 # --- 2. LOGGING SETUP ---
@@ -81,6 +82,7 @@ def setup_and_fetch_data(symbols, start_date, end_date):
             'trade_tick_value': symbol_info_obj.trade_tick_value,
             'volume_min': symbol_info_obj.volume_min,
             'volume_step': symbol_info_obj.volume_step if symbol_info_obj.volume_step > 0 else 0.01,
+            'currency_profit': symbol_info_obj.currency_profit,
         }
         
         # Fetch Data
@@ -124,9 +126,9 @@ def compute_signal_strength(entry_price, sl, tp, entry_atr):
     return score
 
 # -------------------- Helper: open a trade --------------------
-def open_trade(sim_account, symbol, trade_type, entry_price, sl, tp, entry_atr, timestamp):
+def open_trade(sim_account, symbol, trade_type, entry_price, sl, tp, entry_atr, timestamp, all_data_dfs):
     sl_distance = abs(entry_price - sl)
-    volume = check_risk_and_get_volume(symbol, sim_account['equity'], sl_distance)
+    volume = check_risk_and_get_volume(symbol, sim_account['equity'], sl_distance, timestamp, all_data_dfs)
     if not volume or volume <= 0:
         return False
 
@@ -146,15 +148,56 @@ def open_trade(sim_account, symbol, trade_type, entry_price, sl, tp, entry_atr, 
     print(f"[{timestamp}] OPEN {trade_type} {symbol} @ {entry_price:.5f} vol={volume} (SL={sl:.5f}, TP={tp:.5f})")
     return True
 
-# -------------------- Helper: close a trade --------------------
-def close_trade(sim_account, trade, exit_price, timestamp, reason="close"):
+
+# --- NEW HELPER FUNCTION FOR CURRENCY CONVERSION ---
+def get_conversion_rate(from_currency, to_currency, timestamp, all_data_dfs):
+    """
+    Finds the exchange rate to convert from_currency to to_currency at a specific time.
+    
+    Args:
+        from_currency (str): The currency to convert from (e.g., "JPY").
+        to_currency (str): The currency to convert to (e.g., "USD").
+        timestamp: The timestamp at which to get the rate.
+        all_data_dfs (dict): Dictionary containing all symbol dataframes.
+
+    Returns:
+        float: The exchange rate, or 1.0 if no conversion is needed.
+               Returns None if the conversion pair is not found or data is missing.
+    """
+    if from_currency == to_currency:
+        return 1.0
+
+    # Case 1: Direct pair exists (e.g., for EUR to USD, we need EURUSD)
+    pair1 = f"{from_currency}{to_currency}"
+    if pair1 in all_data_dfs:
+        try:
+            rate = all_data_dfs[pair1].loc[timestamp]['close']
+            return rate
+        except KeyError:
+            # Data for this specific timestamp is missing, try to get the last known value
+            return all_data_dfs[pair1]['close'].asof(timestamp)
+
+    # Case 2: Inverse pair exists (e.g., for JPY to USD, we need USDJPY)
+    pair2 = f"{to_currency}{from_currency}"
+    if pair2 in all_data_dfs:
+        try:
+            rate = all_data_dfs[pair2].loc[timestamp]['close']
+            return 1.0 / rate if rate != 0 else None
+        except KeyError:
+            rate = all_data_dfs[pair2]['close'].asof(timestamp)
+            return 1.0 / rate if rate and rate != 0 else None
+
+    # If we reach here, no conversion pair was found in the data
+    logger.warning(f"Cannot find conversion pair for {from_currency}->{to_currency} at {timestamp}")
+    return None
+
+# --- REPLACEMENT close_trade FUNCTION ---
+def close_trade(sim_account, trade, exit_price, timestamp, all_data_dfs, reason="close"):
     symbol_props = ALL_SYMBOL_PROPERTIES[trade['symbol']]
     
-    # --- THIS IS THE CORRECTED PNL CALCULATION ---
     tick_size = symbol_props['trade_tick_size']
     tick_value = symbol_props['trade_tick_value']
 
-    # Safety check to prevent division by zero
     if tick_size <= 0:
         logger.warning(f"Symbol {trade['symbol']} has invalid tick_size {tick_size}. PNL will be 0.")
         pnl = 0
@@ -164,13 +207,26 @@ def close_trade(sim_account, trade, exit_price, timestamp, reason="close"):
         else: # SELL
             price_difference = trade['entry_price'] - exit_price
             
-        # 1. Calculate how many ticks the price moved
         ticks_difference = price_difference / tick_size
         
-        # 2. Calculate PnL using the correct formula
-        pnl = ticks_difference * tick_value * trade['volume']
-    # --- END OF CORRECTION ---
+        # 1. Calculate PnL in the symbol's profit currency (e.g., JPY for EURJPY)
+        pnl_in_quote_currency = ticks_difference * tick_value * trade['volume']
 
+        # 2. Get the required currencies
+        quote_currency = symbol_props['currency_profit']
+        account_currency = CONFIG['ACCOUNT_CURRENCY']
+
+        # 3. Convert PnL to the account's base currency
+        conversion_rate = get_conversion_rate(quote_currency, account_currency, timestamp, all_data_dfs)
+        
+        if conversion_rate is not None:
+            pnl = pnl_in_quote_currency * conversion_rate
+        else:
+            # Fallback: could not convert, PnL will be incorrect. Log a severe warning.
+            logger.error(f"CRITICAL: Failed to convert PNL for {trade['symbol']}. PNL will be based on quote currency '{quote_currency}'.")
+            pnl = pnl_in_quote_currency
+
+    # The rest of the function remains the same
     record = {
         'symbol': trade['symbol'],
         'type': trade['type'],
@@ -186,17 +242,14 @@ def close_trade(sim_account, trade, exit_price, timestamp, reason="close"):
         'reason': reason
     }
     
-    # Use 'closed_trades' consistently
     sim_account.setdefault('closed_trades', []).append(record)
     sim_account['balance'] += pnl
     sim_account['equity'] += pnl
     
-    # Record equity change for the chart
     sim_account['equity_curve'].append({'time': timestamp, 'equity': sim_account['equity']})
     
     sim_account['open_trades'].remove(trade)
-    print(f"[{timestamp}] CLOSE {trade['symbol']} {trade['type']} exit={exit_price:.5f} pnl={pnl:.2f} reason={reason}")
-
+    print(f"[{timestamp}] CLOSE {trade['symbol']} {trade['type']} exit={exit_price:.5f} pnl={pnl:.2f} {account_currency} reason={reason}")
 
 def reset_daily_state():
     # ... (this function remains the same)
@@ -208,11 +261,12 @@ def reset_daily_state():
     }
 
 # --- NEW REPLACEMENT FUNCTION ---
-def check_risk_and_get_volume(symbol, equity, sl_price_distance):
+# --- NEW REPLACEMENT FUNCTION ---
+def check_risk_and_get_volume(symbol, equity, sl_price_distance, timestamp, all_data_dfs):
     """
     This function acts as a final risk gatekeeper.
     1. It uses the FIXED minimum lot size for the symbol.
-    2. It calculates the potential loss if this trade hits the stop loss.
+    2. It calculates the potential loss, CONVERTING it to the account currency.
     3. It compares this potential loss to the max allowed risk (1% of equity).
     4. If risk is acceptable, it returns the minimum lot size.
     5. If risk is too high, it logs a warning and returns 0 (skipping the trade).
@@ -222,31 +276,37 @@ def check_risk_and_get_volume(symbol, equity, sl_price_distance):
         logger.warning(f"No properties for {symbol}, cannot size position.")
         return 0
 
-    # Rule 1: Always use the minimum lot size
     volume = symbol_props['volume_min']
+    max_allowed_risk_account_currency = equity * (CONFIG["RISK_PER_TRADE_PERCENT"] / 100.0)
 
-    # --- The Risk Check ---
-    # Calculate the maximum allowed loss in dollars based on equity
-    max_allowed_loss_dollars = equity * (CONFIG["RISK_PER_TRADE_PERCENT"] / 100.0)
-
-    # Calculate the potential loss in dollars for this specific trade
+    # Calculate potential loss in the symbol's profit currency (e.g., JPY)
     tick_value = symbol_props['trade_tick_value']
     tick_size = symbol_props['trade_tick_size']
     if tick_value == 0 or tick_size == 0 or sl_price_distance <= 0:
-        return 0 # Cannot calculate risk
+        return 0
 
     value_per_point = tick_value / tick_size
-    potential_loss_dollars = sl_price_distance * value_per_point * volume
+    potential_loss_quote_currency = sl_price_distance * value_per_point * volume
     
-    # Rule 2 & 3: The Decision Gate
-    if potential_loss_dollars <= max_allowed_loss_dollars:
-        # Risk is acceptable, return the lot size to proceed with the trade
+    # Convert potential loss to the account currency (e.g., JPY -> USD)
+    quote_currency = symbol_props['currency_profit']
+    account_currency = CONFIG['ACCOUNT_CURRENCY']
+    
+    conversion_rate = get_conversion_rate(quote_currency, account_currency, timestamp, all_data_dfs)
+    
+    if conversion_rate is None:
+        logger.warning(f"SKIPPING TRADE [{symbol}]: Cannot find currency conversion rate for risk check.")
+        return 0
+        
+    potential_loss_account_currency = potential_loss_quote_currency * conversion_rate
+
+    # The Decision Gate (now using correctly converted risk)
+    if potential_loss_account_currency <= max_allowed_risk_account_currency:
         return volume
     else:
-        # Risk is too high, skip the trade by returning 0
         logger.info(
-            f"SKIPPING TRADE [{symbol}]: Potential risk ${potential_loss_dollars:.2f} "
-            f"(with {volume} lots) exceeds max allowed risk of ${max_allowed_loss_dollars:.2f}"
+            f"SKIPPING TRADE [{symbol}]: Potential risk {potential_loss_account_currency:.2f} {account_currency} "
+            f"(with {volume} lots) exceeds max allowed risk of {max_allowed_risk_account_currency:.2f} {account_currency}"
         )
         return 0
 
@@ -369,18 +429,18 @@ def run_backtest_single_trade_at_time(symbol_dfs, sim_account, CONFIG):
                 if hit_sl and hit_tp:
                     if row['close'] >= row['open']:
                         if trade['type'] == 'BUY':
-                            close_trade(sim_account, trade, trade['sl'], ts, reason='SL (intrabar)')
+                            close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL (intrabar)')
                         else:
-                            close_trade(sim_account, trade, trade['tp'], ts, reason='TP (intrabar)')
+                            close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP (intrabar)')
                     else:
                         if trade['type'] == 'BUY':
-                            close_trade(sim_account, trade, trade['tp'], ts, reason='TP (intrabar)')
+                            close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP (intrabar)')
                         else:
-                            close_trade(sim_account, trade, trade['sl'], ts, reason='SL (intrabar)')
+                            close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL (intrabar)')
                 elif hit_sl:
-                    close_trade(sim_account, trade, trade['sl'], ts, reason='SL')
+                    close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL')
                 elif hit_tp:
-                    close_trade(sim_account, trade, trade['tp'], ts, reason='TP')
+                    close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP')
 
         # ====== B) If no trade open, gather & rank signals ======
         if not sim_account.get('open_trades'):
@@ -417,7 +477,7 @@ def run_backtest_single_trade_at_time(symbol_dfs, sim_account, CONFIG):
                 best = candidates[0]
                 print(f"[{ts}] Signals: {[ (c['symbol'], round(c['score'],3)) for c in candidates ]}")
                 open_trade(sim_account, best['symbol'], best['type'], best['entry_price'],
-                           best['sl'], best['tp'], best['entry_atr'], ts)
+                           best['sl'], best['tp'], best['entry_atr'], ts, symbol_dfs)
 
 
 
