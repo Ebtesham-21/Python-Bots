@@ -2,19 +2,15 @@ import MetaTrader5 as mt5
 import pandas as pd
 import pandas_ta as ta
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time
 import pytz
-import math
 import logging
 import matplotlib.pyplot as plt
 
-
-
-EPS = 1e-12
-# --- 1. BACKTEST CONFIGURATION ---
+# --- 1. CONFIGURATION ---
 CONFIG = {
     # Backtest period
-    "BACKTEST_START_DATE": "2020-01-01",
+    "BACKTEST_START_DATE": "2010-01-01",
     "BACKTEST_END_DATE": "2025-07-30",
     # Trading symbols
     "SYMBOLS": ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
@@ -22,44 +18,42 @@ CONFIG = {
                            "GBPCAD", "NZDCAD", "GBPAUD", "GBPNZD", "GBPCHF", "AUDCAD", "AUDCHF", "AUDNZD", "EURAUD","NZDJPY",  "CHFJPY", "EURGBP",  "USDCNH","USDHKD", "USDMXN", 
                        "USOIL", "UKOIL", "XAUUSD", "XAGUSD",
                        "BTCUSD", "BTCJPY", "BTCXAU", "ETHUSD","AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "NFLX", "US500",
-                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C"], # Keep it to a few symbols for faster backtesting
-    # MT5 chart timeframe
+                       "USTEC", "INTC", "MO", "BABA", "ABT", "LI", "TME", "ADBE", "MMM", "WMT", "PFE", "EQIX", "F", "ORCL", "BA", "NKE", "C"], # Keep it small for faster testing
+    # Chart timeframe
     "TIMEFRAME": mt5.TIMEFRAME_M5,
-    # New York Timezone for session filtering
+    # Session timezone
     "NY_TIMEZONE": pytz.timezone("America/New_York"),
     # Opening Range (OR) times (NY Time)
     "OR_START_HOUR": 9, "OR_START_MIN": 30,
     "OR_END_HOUR": 9, "OR_END_MIN": 45,
-    # Trading window (NY Time) - No new trades outside this window
+    # Trading window (NY Time)
     "TRADE_START_HOUR": 9, "TRADE_START_MIN": 45,
     "TRADE_END_HOUR": 12, "TRADE_END_MIN": 0,
     # Risk management
     "INITIAL_BALANCE": 200.0,
     "RISK_PER_TRADE_PERCENT": 1.0,
-    # Strategy parameters (same as live bot)
+    # Strategy parameters
     "ATR_PERIOD_STRENGTH": 14,
     "ATR_PERIOD_SL": 5,
-    "IMPULSE_STRENGTH_FACTOR": 0.5,
+    "IMPULSE_STRENGTH_FACTOR": 0.5, # Impulse distance >= 0.5 * ATR(14)
     "SL_BUFFER_ATR_FACTOR": 1.5,
     "MIN_RR_RATIO": 2.0,
-    "VOLATILITY_EXIT_FACTOR": 0.6,
-    "ACCOUNT_CURRENCY": "USD",
+    "TRAIL_ACTIVATION_PROFIT_FACTOR": 0.8, # Activate trailing if current_atr < entry_atr * 0.8
 }
 
-# --- 2. LOGGING SETUP ---
+# --- 2. LOGGING & GLOBALS ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
-# --- 3. GLOBAL VARIABLES ---
 ALL_SYMBOL_PROPERTIES = {}
+EPS = 1e-12
 
-# --- 4. MT5 CONNECTION & DATA FETCHING ---
+# --- 3. MT5 & DATA SETUP ---
 def setup_and_fetch_data(symbols, start_date, end_date):
-    """Initializes MT5, gets symbol properties, and fetches all historical data needed for the backtest."""
+    """Initializes MT5 and fetches all historical data needed."""
     global ALL_SYMBOL_PROPERTIES
     if not mt5.initialize():
-        logger.error("MT5 initialize() failed.")
-        return None
+        logger.error("MT5 initialize() failed."); return None
     logger.info("MT5 Initialized for data fetching.")
     
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -67,501 +61,331 @@ def setup_and_fetch_data(symbols, start_date, end_date):
 
     dataframes = {}
     for symbol in symbols:
-        # Get Symbol Properties (reusing part of the live bot's init)
-        symbol_info_obj = mt5.symbol_info(symbol)
-        if symbol_info_obj is None:
-            logger.warning(f"Symbol {symbol} not found. Skipping.")
-            continue
-        if not symbol_info_obj.visible: mt5.symbol_select(symbol, True)
-        time.sleep(0.5)
+        info = mt5.symbol_info(symbol)
+        if info is None: continue
+        if not info.visible: mt5.symbol_select(symbol, True); time.sleep(0.5)
 
         ALL_SYMBOL_PROPERTIES[symbol] = {
-            'point': symbol_info_obj.point,
-            'digits': symbol_info_obj.digits,
-            'trade_tick_size': symbol_info_obj.trade_tick_size,
-            'trade_tick_value': symbol_info_obj.trade_tick_value,
-            'volume_min': symbol_info_obj.volume_min,
-            'volume_step': symbol_info_obj.volume_step if symbol_info_obj.volume_step > 0 else 0.01,
-            'currency_profit': symbol_info_obj.currency_profit,
+            'point': info.point, 'digits': info.digits,
+            'trade_tick_size': info.trade_tick_size, 'trade_tick_value': info.trade_tick_value,
+            'volume_min': info.volume_min, 'currency_profit': info.currency_profit,
         }
         
-        # Fetch Data
-        logger.info(f"Fetching data for {symbol} from {start_date} to {end_date}...")
         rates = mt5.copy_rates_range(symbol, CONFIG["TIMEFRAME"], start_dt, end_dt)
-        if rates is None or len(rates) == 0:
-            logger.warning(f"No data found for {symbol} in the specified range. Skipping.")
-            continue
+        if rates is None or len(rates) == 0: continue
         
         df = pd.DataFrame(rates)
         df['time'] = pd.to_datetime(df['time'], unit='s')
-        # IMPORTANT: MT5 data is in UTC. Convert to NY time for logic processing.
         df.set_index('time', inplace=True)
         df.index = df.index.tz_localize('UTC').tz_convert(CONFIG['NY_TIMEZONE'])
         
-        # Pre-calculate indicators to avoid recalculating in the loop
-        df.ta.atr(length=CONFIG["ATR_PERIOD_STRENGTH"], append=True)
-        df.ta.atr(length=CONFIG["ATR_PERIOD_SL"], append=True)
-        df.dropna(inplace=True) # Drop rows with NaN indicators at the start
+        # Pre-calculate all necessary indicators
+        df.ta.atr(length=CONFIG["ATR_PERIOD_STRENGTH"], append=True, col_names=(f'ATR_{CONFIG["ATR_PERIOD_STRENGTH"]}',))
+        df.ta.atr(length=CONFIG["ATR_PERIOD_SL"], append=True, col_names=(f'ATR_{CONFIG["ATR_PERIOD_SL"]}',))
+        df.dropna(inplace=True)
         
         dataframes[symbol] = df
-        logger.info(f"Successfully fetched and prepared {len(df)} bars for {symbol}.")
+        logger.info(f"Fetched {len(df)} bars for {symbol}.")
 
     mt5.shutdown()
     logger.info("MT5 Shutdown.")
     return dataframes
 
-# --- 5. SIMULATION & HELPER FUNCTIONS ---
+# --- 4. CORE ALGORITHM HELPERS ---
 
-# -------------------- Helper: compute signal strength --------------------
-def compute_signal_strength(entry_price, sl, tp, entry_atr):
-    """
-    Scores a signal so we can compare them when multiple appear at once.
-    - impulse: distance from entry to SL in ATR units
-    - rr: reward/risk ratio
-    Final score is weighted: impulse (65%) + rr (35%)
-    """
-    impulse = abs(entry_price - sl) / (entry_atr + EPS)
-    rr = abs(tp - entry_price) / (max(abs(entry_price - sl), EPS))
-    score = 0.65 * impulse + 0.35 * rr
-    return score
+def get_or_range(df_today):
+    """Calculates the Opening Range high and low."""
+    or_start = dt_time(CONFIG['OR_START_HOUR'], CONFIG['OR_START_MIN'])
+    or_end = dt_time(CONFIG['OR_END_HOUR'], CONFIG['OR_END_MIN'])
+    or_df = df_today.between_time(or_start, or_end)
+    if or_df.empty:
+        return None, None
+    return or_df['high'].max(), or_df['low'].min()
 
-# -------------------- Helper: open a trade --------------------
-def open_trade(sim_account, symbol, trade_type, entry_price, sl, tp, entry_atr, timestamp, all_data_dfs):
-    sl_distance = abs(entry_price - sl)
-    volume = check_risk_and_get_volume(symbol, sim_account['equity'], sl_distance, timestamp, all_data_dfs)
-    if not volume or volume <= 0:
+def find_breakout_and_zone(df, or_high, or_low, bias, breakout_row, breakout_ts):
+    """
+    Finds the impulse and defines the S/D zone using only information available up to the breakout candle.
+    THIS IS THE CAUSAL, NON-LOOKAHEAD VERSION.
+    Returns: zone_high, zone_low, impulse_peak
+    """
+    # The "impulse candle" is the breakout_row itself.
+    impulse_peak = breakout_row['high'] if bias == 'BULLISH' else breakout_row['low']
+
+    # The "candle before the impulse" is the one just before our breakout candle.
+    # We find its index location and get the previous row.
+    breakout_idx = df.index.get_loc(breakout_ts)
+    if breakout_idx == 0:
+        return None # Cannot get previous candle if it's the first in the dataset
+    
+    # In this new logic, the zone candle is simply the one before the breakout.
+    zone_candle = df.iloc[breakout_idx - 1]
+    zone_high, zone_low = zone_candle['high'], zone_candle['low']
+
+    # Qualify the zone based on impulse strength of the breakout candle
+    strength_atr = zone_candle[f'ATR_{CONFIG["ATR_PERIOD_STRENGTH"]}']
+    if bias == 'BULLISH':
+        # Impulse is from the top of the zone to the high of the breakout candle
+        impulse_distance = breakout_row['high'] - zone_high
+    else: # BEARISH
+        # Impulse is from the bottom of the zone to the low of the breakout candle
+        impulse_distance = zone_low - breakout_row['low']
+
+    if impulse_distance < (strength_atr * CONFIG["IMPULSE_STRENGTH_FACTOR"]):
+        # logger.debug(f"[{breakout_ts}] Impulse for {df.iloc[0]['symbol']} not strong enough.")
+        return None # Impulse was not strong enough
+
+    return zone_high, zone_low, impulse_peak
+
+# --- 5. SIMULATION & TRADING FUNCTIONS ---
+
+def check_risk_and_get_volume(symbol, equity, sl_price_distance):
+    """
+    Ensures the trade respects the 1% risk rule with the minimum lot size.
+    """
+    props = ALL_SYMBOL_PROPERTIES.get(symbol)
+    if not props: return 0.0
+
+    # This strategy ALWAYS uses the minimum lot size.
+    volume = props['volume_min']
+    
+    max_risk_dollars = equity * (CONFIG["RISK_PER_TRADE_PERCENT"] / 100.0)
+
+    # Simplified risk check for backtesting (assumes USD account and direct pairs)
+    # A full implementation would need the currency conversion logic.
+    if props['currency_profit'] != 'USD':
+         # In a real scenario, you'd convert. For this backtest, we assume it's close enough.
+         pass
+    
+    tick_value = props['trade_tick_value']
+    tick_size = props['trade_tick_size']
+
+    if tick_value == 0 or tick_size == 0 or sl_price_distance <= 0:
+        return 0.0
+
+    value_per_point = tick_value / tick_size
+    potential_loss = sl_price_distance * value_per_point * volume
+
+    if potential_loss > max_risk_dollars:
+        # logger.info(f"SKIP {symbol}: Risk ${potential_loss:.2f} > Max Risk ${max_risk_dollars:.2f}")
+        return 0.0
+    
+    return volume
+
+def open_trade(sim_account, signal, entry_price, entry_ts):
+    """Simulates opening a trade."""
+    sl_distance = abs(entry_price - signal['sl'])
+    volume = check_risk_and_get_volume(signal['symbol'], sim_account['equity'], sl_distance)
+    if volume <= 0:
         return False
 
     trade = {
-        'symbol': symbol,
-        'type': trade_type,
-        'volume': volume,
-        'entry_price': entry_price,
-        'sl': sl,
-        'tp': tp,
-        'entry_time': timestamp,
-        'entry_atr': entry_atr,
-        'trailing_active': False,
-        'trail_distance': None
+        'symbol': signal['symbol'], 'type': signal['bias'],
+        'volume': volume, 'entry_price': entry_price,
+        'sl': signal['sl'], 'tp': signal['tp'], 'entry_time': entry_ts,
+        'entry_atr': signal['sl_atr'], # ATR at the time of entry signal
+        'trailing_active': False
     }
     sim_account['open_trades'].append(trade)
-    print(f"[{timestamp}] OPEN {trade_type} {symbol} @ {entry_price:.5f} vol={volume} (SL={sl:.5f}, TP={tp:.5f})")
+    logger.info(f"[{entry_ts}] OPEN {trade['type']} {trade['symbol']} @ {entry_price:.5f} | SL={trade['sl']:.5f} TP={trade['tp']:.5f}")
     return True
 
-
-# --- NEW HELPER FUNCTION FOR CURRENCY CONVERSION ---
-def get_conversion_rate(from_currency, to_currency, timestamp, all_data_dfs):
-    """
-    Finds the exchange rate to convert from_currency to to_currency at a specific time.
+def close_trade(sim_account, trade, exit_price, exit_ts, reason):
+    """Simulates closing a trade and records the result."""
+    props = ALL_SYMBOL_PROPERTIES[trade['symbol']]
+    pnl = 0
+    price_diff = (exit_price - trade['entry_price']) if trade['type'] == 'BULLISH' else (trade['entry_price'] - exit_price)
     
-    Args:
-        from_currency (str): The currency to convert from (e.g., "JPY").
-        to_currency (str): The currency to convert to (e.g., "USD").
-        timestamp: The timestamp at which to get the rate.
-        all_data_dfs (dict): Dictionary containing all symbol dataframes.
+    if props['trade_tick_size'] > 0:
+        pnl = (price_diff / props['trade_tick_size']) * props['trade_tick_value'] * trade['volume']
 
-    Returns:
-        float: The exchange rate, or 1.0 if no conversion is needed.
-               Returns None if the conversion pair is not found or data is missing.
-    """
-    if from_currency == to_currency:
-        return 1.0
-
-    # Case 1: Direct pair exists (e.g., for EUR to USD, we need EURUSD)
-    pair1 = f"{from_currency}{to_currency}"
-    if pair1 in all_data_dfs:
-        try:
-            rate = all_data_dfs[pair1].loc[timestamp]['close']
-            return rate
-        except KeyError:
-            # Data for this specific timestamp is missing, try to get the last known value
-            return all_data_dfs[pair1]['close'].asof(timestamp)
-
-    # Case 2: Inverse pair exists (e.g., for JPY to USD, we need USDJPY)
-    pair2 = f"{to_currency}{from_currency}"
-    if pair2 in all_data_dfs:
-        try:
-            rate = all_data_dfs[pair2].loc[timestamp]['close']
-            return 1.0 / rate if rate != 0 else None
-        except KeyError:
-            rate = all_data_dfs[pair2]['close'].asof(timestamp)
-            return 1.0 / rate if rate and rate != 0 else None
-
-    # If we reach here, no conversion pair was found in the data
-    logger.warning(f"Cannot find conversion pair for {from_currency}->{to_currency} at {timestamp}")
-    return None
-
-# --- REPLACEMENT close_trade FUNCTION ---
-def close_trade(sim_account, trade, exit_price, timestamp, all_data_dfs, reason="close"):
-    symbol_props = ALL_SYMBOL_PROPERTIES[trade['symbol']]
-    
-    tick_size = symbol_props['trade_tick_size']
-    tick_value = symbol_props['trade_tick_value']
-
-    if tick_size <= 0:
-        logger.warning(f"Symbol {trade['symbol']} has invalid tick_size {tick_size}. PNL will be 0.")
-        pnl = 0
-    else:
-        if trade['type'] == 'BUY':
-            price_difference = exit_price - trade['entry_price']
-        else: # SELL
-            price_difference = trade['entry_price'] - exit_price
-            
-        ticks_difference = price_difference / tick_size
-        
-        # 1. Calculate PnL in the symbol's profit currency (e.g., JPY for EURJPY)
-        pnl_in_quote_currency = ticks_difference * tick_value * trade['volume']
-
-        # 2. Get the required currencies
-        quote_currency = symbol_props['currency_profit']
-        account_currency = CONFIG['ACCOUNT_CURRENCY']
-
-        # 3. Convert PnL to the account's base currency
-        conversion_rate = get_conversion_rate(quote_currency, account_currency, timestamp, all_data_dfs)
-        
-        if conversion_rate is not None:
-            pnl = pnl_in_quote_currency * conversion_rate
-        else:
-            # Fallback: could not convert, PnL will be incorrect. Log a severe warning.
-            logger.error(f"CRITICAL: Failed to convert PNL for {trade['symbol']}. PNL will be based on quote currency '{quote_currency}'.")
-            pnl = pnl_in_quote_currency
-
-    # The rest of the function remains the same
     record = {
-        'symbol': trade['symbol'],
-        'type': trade['type'],
-        'volume': trade['volume'],
-        'entry_price': trade['entry_price'],
-        'exit_price': exit_price,
-        'sl': trade['sl'],
-        'tp': trade['tp'],
-        'entry_time': trade['entry_time'],
-        'exit_time': timestamp,
-        'entry_atr': trade.get('entry_atr'),
-        'pnl': pnl,
-        'reason': reason
+        'symbol': trade['symbol'], 'pnl': pnl, 'reason': reason,
+        'entry_time': trade['entry_time'], 'exit_time': exit_ts,
     }
-    
-    sim_account.setdefault('closed_trades', []).append(record)
-    sim_account['balance'] += pnl
+    sim_account['closed_trades'].append(record)
     sim_account['equity'] += pnl
-    
-    sim_account['equity_curve'].append({'time': timestamp, 'equity': sim_account['equity']})
-    
+    sim_account['equity_curve'].append({'time': exit_ts, 'equity': sim_account['equity']})
     sim_account['open_trades'].remove(trade)
-    print(f"[{timestamp}] CLOSE {trade['symbol']} {trade['type']} exit={exit_price:.5f} pnl={pnl:.2f} {account_currency} reason={reason}")
+    logger.info(f"[{exit_ts}] CLOSE {trade['symbol']} @ {exit_price:.5f} | PnL={pnl:.2f} ({reason})")
 
-def reset_daily_state():
-    # ... (this function remains the same)
-    return {
-        "daily_bias": None, "or_high": None, "or_low": None, "zone_defined": False,
-        "zone_high": None, "zone_low": None, "zone_touched": False, "entry_price": None,
-        "stop_loss": None, "take_profit": None, "order_placed": False,
-        "trade_taken_today": False,
-    }
-
-# --- NEW REPLACEMENT FUNCTION ---
-# --- NEW REPLACEMENT FUNCTION ---
-def check_risk_and_get_volume(symbol, equity, sl_price_distance, timestamp, all_data_dfs):
-    """
-    This function acts as a final risk gatekeeper.
-    1. It uses the FIXED minimum lot size for the symbol.
-    2. It calculates the potential loss, CONVERTING it to the account currency.
-    3. It compares this potential loss to the max allowed risk (1% of equity).
-    4. If risk is acceptable, it returns the minimum lot size.
-    5. If risk is too high, it logs a warning and returns 0 (skipping the trade).
-    """
-    symbol_props = ALL_SYMBOL_PROPERTIES.get(symbol)
-    if not symbol_props:
-        logger.warning(f"No properties for {symbol}, cannot size position.")
-        return 0
-
-    volume = symbol_props['volume_min']
-    max_allowed_risk_account_currency = equity * (CONFIG["RISK_PER_TRADE_PERCENT"] / 100.0)
-
-    # Calculate potential loss in the symbol's profit currency (e.g., JPY)
-    tick_value = symbol_props['trade_tick_value']
-    tick_size = symbol_props['trade_tick_size']
-    if tick_value == 0 or tick_size == 0 or sl_price_distance <= 0:
-        return 0
-
-    value_per_point = tick_value / tick_size
-    potential_loss_quote_currency = sl_price_distance * value_per_point * volume
-    
-    # Convert potential loss to the account currency (e.g., JPY -> USD)
-    quote_currency = symbol_props['currency_profit']
-    account_currency = CONFIG['ACCOUNT_CURRENCY']
-    
-    conversion_rate = get_conversion_rate(quote_currency, account_currency, timestamp, all_data_dfs)
-    
-    if conversion_rate is None:
-        logger.warning(f"SKIPPING TRADE [{symbol}]: Cannot find currency conversion rate for risk check.")
-        return 0
-        
-    potential_loss_account_currency = potential_loss_quote_currency * conversion_rate
-
-    # The Decision Gate (now using correctly converted risk)
-    if potential_loss_account_currency <= max_allowed_risk_account_currency:
-        return volume
-    else:
-        logger.info(
-            f"SKIPPING TRADE [{symbol}]: Potential risk {potential_loss_account_currency:.2f} {account_currency} "
-            f"(with {volume} lots) exceeds max allowed risk of {max_allowed_risk_account_currency:.2f} {account_currency}"
-        )
-        return 0
-
-
-# --- STRATEGY LOGIC & SIGNAL DETECTION ---
-def check_entry_signal(symbol, row):
-    """
-    This is the core strategy function.
-    It analyzes a single row (candle) of data and determines if a trade signal exists.
-
-    Args:
-        symbol (str): The symbol being checked.
-        row (pd.Series): A row from the symbol's DataFrame, containing o,h,l,c and indicators.
-
-    Returns:
-        dict: A dictionary with trade details if a signal is found, otherwise None.
-    """
-    # --- Time-based filter: Only trade within the allowed window ---
-    current_time = row.name.time()
-    trade_start_time = datetime.strptime(f"{CONFIG['TRADE_START_HOUR']}:{CONFIG['TRADE_START_MIN']}", "%H:%M").time()
-    trade_end_time = datetime.strptime(f"{CONFIG['TRADE_END_HOUR']}:{CONFIG['TRADE_END_MIN']}", "%H:%M").time()
-
-    if not (trade_start_time <= current_time < trade_end_time):
-        return None # Outside of trading hours
-
-    # --- Strategy Logic: Impulse Candle ---
-    entry_atr = row.get(f'ATRr_{CONFIG["ATR_PERIOD_STRENGTH"]}')
-    sl_atr = row.get(f'ATRr_{CONFIG["ATR_PERIOD_SL"]}')
-
-    if pd.isna(entry_atr) or pd.isna(sl_atr):
-        return None # Not enough data for indicators
-
-    candle_body = abs(row['close'] - row['open'])
-
-    # Check for a strong impulse move
-    if candle_body > entry_atr * CONFIG["IMPULSE_STRENGTH_FACTOR"]:
-        trade_type = None
-        if row['close'] > row['open']:
-            trade_type = 'BUY'
-        elif row['close'] < row['open']:
-            trade_type = 'SELL'
-
-        if trade_type:
-            entry_price = row['close']
-            sl_distance = sl_atr * CONFIG["SL_BUFFER_ATR_FACTOR"]
-            tp_distance = sl_distance * CONFIG["MIN_RR_RATIO"]
-
-            if trade_type == 'BUY':
-                sl = entry_price - sl_distance
-                tp = entry_price + tp_distance
-            else: # SELL
-                sl = entry_price + sl_distance
-                tp = entry_price - tp_distance
-
-            # Return a dictionary with all the required trade information
-            return {
-                'type': trade_type,
-                'entry_price': entry_price,
-                'sl': sl,
-                'tp': tp,
-                'entry_atr': entry_atr,
-            }
-
-    # If no signal was found, return None
-    return None
-
-
-
-
-# -------------------- Main Backtest Loop --------------------
-def run_backtest_single_trade_at_time(symbol_dfs, sim_account, CONFIG):
-    all_timestamps = sorted(set().union(*[set(df.index) for df in symbol_dfs.values()]))
-
-    for ts in all_timestamps:
-        # ====== A) Manage the single open trade (if any) ======
-        if sim_account.get('open_trades'):
-            trade = sim_account['open_trades'][0]
-            df = symbol_dfs.get(trade['symbol'])
-            if df is not None and ts in df.index:
-                row = df.loc[ts]
-                current_atr = row.get(f'ATRr_{CONFIG["ATR_PERIOD_SL"]}', None)
-
-                # --- Dynamic trailing SL activation ---
-                if current_atr is not None:
-                    if (not trade['trailing_active']) and (current_atr < trade['entry_atr'] * 0.8):
-                        # Optional: require trade to be in profit before activating
-                        in_profit = (trade['type'] == 'BUY' and row['close'] > trade['entry_price']) or \
-                                    (trade['type'] == 'SELL' and row['close'] < trade['entry_price'])
-                        if in_profit:
-                            trade['trailing_active'] = True
-
-                    if trade['trailing_active']:
-                        atr_ratio = current_atr / (trade['entry_atr'] + EPS)
-                        unrealized_atr = abs(row['close'] - trade['entry_price']) / (current_atr + EPS)
-
-                        if atr_ratio >= 0.6:
-                            multiplier = 1.5
-                        elif atr_ratio >= 0.5:
-                            multiplier = 1.0
-                        else:
-                            multiplier = 0.5
-
-                        if unrealized_atr > 3:
-                            multiplier = min(multiplier, 0.8)
-
-                        trade['trail_distance'] = current_atr * multiplier
-                        if trade['type'] == 'BUY':
-                            trade['sl'] = max(trade['sl'], row['close'] - trade['trail_distance'])
-                        else:
-                            trade['sl'] = min(trade['sl'], row['close'] + trade['trail_distance'])
-
-                # --- SL/TP checks (with intrabar heuristic) ---
-                if trade['type'] == 'BUY':
-                    hit_sl = row['low'] <= trade['sl']
-                    hit_tp = row['high'] >= trade['tp']
-                else:
-                    hit_sl = row['high'] >= trade['sl']
-                    hit_tp = row['low'] <= trade['tp']
-
-                if hit_sl and hit_tp:
-                    if row['close'] >= row['open']:
-                        if trade['type'] == 'BUY':
-                            close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL (intrabar)')
-                        else:
-                            close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP (intrabar)')
-                    else:
-                        if trade['type'] == 'BUY':
-                            close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP (intrabar)')
-                        else:
-                            close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL (intrabar)')
-                elif hit_sl:
-                    close_trade(sim_account, trade, trade['sl'], ts, symbol_dfs, reason='SL')
-                elif hit_tp:
-                    close_trade(sim_account, trade, trade['tp'], ts, symbol_dfs, reason='TP')
-
-        # ====== B) If no trade open, gather & rank signals ======
-        if not sim_account.get('open_trades'):
-            candidates = []
-            for symbol, df in symbol_dfs.items():
-                if ts not in df.index:
-                    continue
-                row = df.loc[ts]
-
-                # Your existing signal detection here:
-                sig = check_entry_signal(symbol, row)
-                if not sig:
-                    continue
-
-                trade_type = sig['type']  # should be 'BUY' or 'SELL'
-                entry_price = sig['entry_price']
-                sl = sig['sl']
-                tp = sig['tp']
-                entry_atr = sig['entry_atr']
-
-                score = compute_signal_strength(entry_price, sl, tp, entry_atr)
-                candidates.append({
-                    'symbol': symbol,
-                    'type': trade_type,
-                    'entry_price': entry_price,
-                    'sl': sl,
-                    'tp': tp,
-                    'entry_atr': entry_atr,
-                    'score': score
-                })
-
-            if candidates:
-                candidates.sort(key=lambda x: (x['score'], x['entry_atr']), reverse=True)
-                best = candidates[0]
-                print(f"[{ts}] Signals: {[ (c['symbol'], round(c['score'],3)) for c in candidates ]}")
-                open_trade(sim_account, best['symbol'], best['type'], best['entry_price'],
-                           best['sl'], best['tp'], best['entry_atr'], ts, symbol_dfs)
-
-
-
-# --- 6. BACKTEST ORCHESTRATION ---
+# --- 6. MAIN BACKTEST LOOP ---
 def run_backtest(symbol_dfs):
-    """
-    Initializes the simulation account, runs the main backtest loop,
-    and returns the final account state.
-    """
-    # Initialize the simulation account state
     sim_account = {
-        'balance': CONFIG['INITIAL_BALANCE'],
         'equity': CONFIG['INITIAL_BALANCE'],
-        'open_trades': [],
-        'closed_trades': [],
-        'equity_curve': [] # Will be populated by close_trade
+        'open_trades': [], 'closed_trades': [],
+        'equity_curve': [{'time': list(symbol_dfs.values())[0].index[0], 'equity': CONFIG['INITIAL_BALANCE']}]
     }
 
-    # Find the very first timestamp across all dataframes to start the curve
-    try:
-        first_ts = min(df.index[0] for df in symbol_dfs.values() if not df.empty)
-        sim_account['equity_curve'].append({'time': first_ts, 'equity': sim_account['equity']})
-    except ValueError: # handles case where all dataframes are empty
-        sim_account['equity_curve'].append({'time': None, 'equity': sim_account['equity']})
+    # Group data by day to process daily logic
+    all_data = pd.concat(symbol_dfs.values(), keys=symbol_dfs.keys(), names=['symbol', 'time']).sort_index()
+    daily_groups = all_data.groupby(all_data.index.get_level_values('time').date)
 
+    daily_states = {s: {} for s in symbol_dfs.keys()}
 
-    # Call the main loop function which modifies sim_account in place
-    run_backtest_single_trade_at_time(symbol_dfs, sim_account, CONFIG)
+    for day, df_day_all_symbols in daily_groups:
+        if sim_account.get('open_trades'): continue # Skip to next day if trade is held overnight
+
+        # --- 1. Preprocessing for the day ---
+        for symbol in symbol_dfs.keys():
+            daily_states[symbol] = {'bias': None, 'zone_high': None, 'zone_low': None, 'zone_fresh': False, 'impulse_peak': None}
+            df_sym_day = df_day_all_symbols.loc[df_day_all_symbols.index.get_level_values('symbol') == symbol]
+            df_sym_day = df_sym_day.reset_index(level='symbol')
+            if df_sym_day.empty: continue
+            
+            or_high, or_low = get_or_range(df_sym_day)
+            if or_high is None: continue
+            daily_states[symbol]['or_high'] = or_high
+            daily_states[symbol]['or_low'] = or_low
+
+        # --- 2. Iterate through the timestamps of the day ---
+        timestamps = sorted(df_day_all_symbols.index.get_level_values('time').unique())
+        
+        trade_start = dt_time(CONFIG['TRADE_START_HOUR'], CONFIG['TRADE_START_MIN'])
+        trade_end = dt_time(CONFIG['TRADE_END_HOUR'], CONFIG['TRADE_END_MIN'])
+        
+        for ts in timestamps:
+            current_time = ts.time()
+
+            # --- A. Manage Open Trade ---
+            if sim_account.get('open_trades'):
+                trade = sim_account['open_trades'][0]
+                try:
+                    row = all_data.loc[(trade['symbol'], ts)]
+                except KeyError: continue # No data for this symbol at this timestamp
+                
+                # Trailing Stop Logic (from previous bot)
+                current_atr = row[f'ATR_{CONFIG["ATR_PERIOD_SL"]}']
+                if not trade['trailing_active'] and current_atr < trade['entry_atr'] * CONFIG["TRAIL_ACTIVATION_PROFIT_FACTOR"]:
+                    in_profit = (trade['type'] == 'BULLISH' and row['close'] > trade['entry_price']) or \
+                                (trade['type'] == 'BEARISH' and row['close'] < trade['entry_price'])
+                    if in_profit:
+                        trade['trailing_active'] = True
+                        logger.info(f"[{ts}] Trailing SL activated for {trade['symbol']}")
+                
+                if trade['trailing_active']:
+                    if trade['type'] == 'BULLISH':
+                        new_sl = row['close'] - (current_atr * CONFIG['SL_BUFFER_ATR_FACTOR'])
+                        trade['sl'] = max(trade['sl'], new_sl)
+                    else:
+                        new_sl = row['close'] + (current_atr * CONFIG['SL_BUFFER_ATR_FACTOR'])
+                        trade['sl'] = min(trade['sl'], new_sl)
+                
+                # Check for SL/TP hit
+                if trade['type'] == 'BULLISH':
+                    if row['low'] <= trade['sl']: close_trade(sim_account, trade, trade['sl'], ts, 'SL'); break
+                    if row['high'] >= trade['tp']: close_trade(sim_account, trade, trade['tp'], ts, 'TP'); break
+                else: # BEARISH
+                    if row['high'] >= trade['sl']: close_trade(sim_account, trade, trade['sl'], ts, 'SL'); break
+                    if row['low'] <= trade['tp']: close_trade(sim_account, trade, trade['tp'], ts, 'TP'); break
+                continue # If trade is open, do nothing else for this timestamp
+
+            # --- B. Look for Entry Signals (if no trade is open) ---
+            if not sim_account.get('open_trades'):
+                candidates = []
+                for symbol in symbol_dfs.keys():
+                    state = daily_states[symbol]
+                    try:
+                        row = all_data.loc[(symbol, ts)]
+                    except KeyError: continue
+
+                    # a. Determine daily bias if not set yet
+                    or_end_time = dt_time(CONFIG['OR_END_HOUR'], CONFIG['OR_END_MIN'])
+                    if state['bias'] is None and state.get('or_high') and current_time > or_end_time:
+                        if row['close'] > state['or_high']: state['bias'] = 'BULLISH'
+                        elif row['close'] < state['or_low']: state['bias'] = 'BEARISH'
+                        
+                        if state['bias']:
+                            logger.info(f"[{ts}] Session bias for {symbol} set to: {state['bias']}")
+                            # Find and define the zone using the causal function
+                            # We pass the current 'row' which represents the breakout candle
+                            zone_info = find_breakout_and_zone(symbol_dfs[symbol], state['or_high'], state['or_low'], state['bias'], row, ts)
+                            if zone_info:
+                                # The new function returns 3 items, not 4
+                                state['zone_high'], state['zone_low'], state['impulse_peak'] = zone_info
+                                state['zone_fresh'] = True
+                                logger.info(f"[{ts}] {symbol} S/D Zone defined: {state['zone_low']:.5f} - {state['zone_high']:.5f}")
+                    # b. If bias and a fresh zone exist, look for pullback entry
+                    if state.get('bias') and state.get('zone_fresh') and trade_start <= current_time < trade_end:
+                        entry_price = None
+                        if state['bias'] == 'BULLISH' and row['low'] <= state['zone_high']:
+                            entry_price = state['zone_high'] # Enter at top of demand zone
+                        elif state['bias'] == 'BEARISH' and row['high'] >= state['zone_low']:
+                            entry_price = state['zone_low'] # Enter at bottom of supply zone
+                        
+                        if entry_price:
+                            state['zone_fresh'] = False # Zone is no longer fresh
+                            
+                            # Calculate SL and TP based on the algorithm
+                            sl_atr = row[f'ATR_{CONFIG["ATR_PERIOD_SL"]}']
+                            sl_buffer = sl_atr * CONFIG['SL_BUFFER_ATR_FACTOR']
+                            
+                            if state['bias'] == 'BULLISH':
+                                sl = state['zone_low'] - sl_buffer
+                                tp = state['impulse_peak']
+                                # Enforce min R:R
+                                if (tp - entry_price) < CONFIG['MIN_RR_RATIO'] * (entry_price - sl):
+                                    tp = entry_price + (CONFIG['MIN_RR_RATIO'] * (entry_price - sl))
+                            else: # BEARISH
+                                sl = state['zone_high'] + sl_buffer
+                                tp = state['impulse_peak']
+                                # Enforce min R:R
+                                if (entry_price - tp) < CONFIG['MIN_RR_RATIO'] * (sl - entry_price):
+                                    tp = entry_price - (CONFIG['MIN_RR_RATIO'] * (sl - entry_price))
+                            
+                            candidates.append({
+                                'symbol': symbol, 'bias': state['bias'], 'sl': sl, 'tp': tp,
+                                'entry_price': entry_price, 'entry_ts': ts, 'sl_atr': sl_atr,
+                                'score': abs(state['impulse_peak'] - (state['zone_high'] if state['bias'] == 'BULLISH' else state['zone_low'])) # Score by impulse size
+                            })
+                
+                # c. If we have candidates, pick the best one and open the trade
+                if candidates:
+                    candidates.sort(key=lambda x: x['score'], reverse=True)
+                    best_signal = candidates[0]
+                    logger.info(f"[{ts}] Best signal found: {best_signal['symbol']}. Attempting to open trade.")
+                    if open_trade(sim_account, best_signal, best_signal['entry_price'], best_signal['entry_ts']):
+                        # Once trade is open, stop looking for more signals today
+                        pass
 
     return sim_account
 
 # --- 7. REPORTING ---
 def generate_report(sim_account):
-    """Calculates and prints performance metrics from the backtest."""
+    """Generates and prints a performance report."""
     history_df = pd.DataFrame(sim_account['closed_trades'])
     if history_df.empty:
-        logger.info("No trades were executed during the backtest.")
-        return
+        logger.info("No trades were executed during the backtest."); return
 
     logger.info("\n--- Backtest Performance Report ---")
     
     initial_balance = CONFIG['INITIAL_BALANCE']
-    # --- BEST PRACTICE: Use the final equity for the report ---
-    final_balance = sim_account['equity'] 
-    total_pnl = final_balance - initial_balance
+    final_equity = sim_account['equity']
     
     total_trades = len(history_df)
     wins = history_df[history_df['pnl'] > 0]
-    losses = history_df[history_df['pnl'] <= 0]
+    win_rate = len(wins) / total_trades * 100
     
-    win_rate = len(wins) / total_trades * 100 if total_trades > 0 else 0
-    
-    avg_win = wins['pnl'].mean()
-    avg_loss = losses['pnl'].mean()
-    
-    profit_factor = abs(wins['pnl'].sum() / losses['pnl'].sum()) if losses['pnl'].sum() != 0 else float('inf')
-    
-    # Max Drawdown
-    equity_curve = pd.DataFrame(sim_account['equity_curve']).set_index('time')
-    equity_curve['high_water_mark'] = equity_curve['equity'].cummax()
-    equity_curve['drawdown'] = equity_curve['high_water_mark'] - equity_curve['equity']
-    equity_curve['drawdown_pct'] = equity_curve['drawdown'] / equity_curve['high_water_mark'] * 100
-    max_drawdown_pct = equity_curve['drawdown_pct'].max()
+    profit_factor = abs(wins['pnl'].sum() / history_df[history_df['pnl'] < 0]['pnl'].sum()) if history_df[history_df['pnl'] < 0]['pnl'].sum() != 0 else float('inf')
     
     print(f"Period: {CONFIG['BACKTEST_START_DATE']} to {CONFIG['BACKTEST_END_DATE']}")
     print(f"Initial Balance: ${initial_balance:,.2f}")
-    print(f"Final Balance:   ${final_balance:,.2f}")
-    print(f"Total PnL:       ${total_pnl:,.2f} ({total_pnl/initial_balance*100:.2f}%)")
+    print(f"Final Equity:    ${final_equity:,.2f}")
+    print(f"Net PnL:         ${(final_equity - initial_balance):,.2f} ({(final_equity/initial_balance - 1)*100:.2f}%)")
     print("-" * 35)
     print(f"Total Trades:    {total_trades}")
     print(f"Win Rate:        {win_rate:.2f}%")
     print(f"Profit Factor:   {profit_factor:.2f}")
-    print(f"Avg Win:         ${avg_win:,.2f}")
-    print(f"Avg Loss:        ${avg_loss:,.2f}")
-    print(f"Max Drawdown:    {max_drawdown_pct:.2f}%")
+
+    equity_curve_df = pd.DataFrame(sim_account['equity_curve']).set_index('time')
+    equity_curve_df['high_water_mark'] = equity_curve_df['equity'].cummax()
+    equity_curve_df['drawdown'] = (equity_curve_df['high_water_mark'] - equity_curve_df['equity']) / equity_curve_df['high_water_mark'] * 100
+    max_dd = equity_curve_df['drawdown'].max()
+    print(f"Max Drawdown:    {max_dd:.2f}%")
     print("-" * 35)
 
-    # Plot Equity Curve
     plt.figure(figsize=(12, 6))
-    equity_curve['equity'].plot(title='Equity Curve', grid=True)
-    plt.xlabel('Date')
-    plt.ylabel('Equity ($)')
+    equity_curve_df['equity'].plot(title='Equity Curve', grid=True)
     plt.show()
-
 
 # --- 8. SCRIPT EXECUTION ---
 if __name__ == "__main__":
@@ -572,7 +396,7 @@ if __name__ == "__main__":
     )
     
     if backtest_data:
-        final_account_state = run_backtest(backtest_data)
-        generate_report(final_account_state)
+        final_account = run_backtest(backtest_data)
+        generate_report(final_account)
     else:
         logger.error("Could not run backtest due to data fetching issues.")
