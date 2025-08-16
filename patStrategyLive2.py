@@ -145,13 +145,16 @@ def check_risk_and_get_volume(symbol, sl_price_distance):
     return volume
 
 def place_limit_order(signal):
-    """Places a real limit order on MT5 and prepares its state."""
+    """
+    Attempts to place a real limit order.
+    Returns True on success, False on failure.
+    """
     global MANAGED_TRADE_STATE
-    # ... (the top part of the function is the same) ...
     
-    # This part remains the same
     volume = check_risk_and_get_volume(signal['symbol'], abs(signal['entry_price'] - signal['sl']))
-    if volume <= 0: return
+    if volume <= 0:
+        # This is not an error, it's the risk gate working. No need to log here as check_risk logs it.
+        return False # Signal failure to the main loop
 
     order_type = mt5.ORDER_TYPE_BUY_LIMIT if signal['bias'] == 'BULLISH' else mt5.ORDER_TYPE_SELL_LIMIT
 
@@ -165,10 +168,11 @@ def place_limit_order(signal):
     result = mt5.order_send(request)
     if result.retcode == mt5.TRADE_RETCODE_DONE:
         logger.info(f"SUCCESS: Placed {signal['bias']} LIMIT order for {signal['symbol']} @ {signal['entry_price']:.5f}, Order Ticket: {result.order}")
-        # Store the state using the PENDING ORDER ticket as the key
         MANAGED_TRADE_STATE[result.order] = {'entry_atr': signal['sl_atr'], 'status': 'PENDING'}
+        return True # Signal success
     else:
         logger.error(f"FAILED to place LIMIT order for {signal['symbol']}. Code: {result.retcode}, Comment: {result.comment}")
+        return False # Signal failure
 
 def modify_position_sl(position, new_sl):
     """Modifies the stop loss of an open position."""
@@ -193,42 +197,31 @@ def manage_daily_state(symbol):
 
 def sync_trade_state():
     """
-    Finds any open positions managed by this bot and ensures their state is loaded.
-    If state is missing (e.g., after a restart), it reconstructs it.
-    This is the robust, simplified version.
+    Finds any open positions and pending orders, syncs their state, and cleans up any closed/cancelled ones.
+    This version correctly handles the state of pending orders.
     """
     global MANAGED_TRADE_STATE
     
     positions = mt5.positions_get(magic=CONFIG["MAGIC_NUMBER"])
-    if not positions:
-        # If no positions exist, clear the state dictionary
-        if MANAGED_TRADE_STATE:
-            logger.info("No open positions found. Clearing all trade states.")
-            MANAGED_TRADE_STATE.clear()
-        return
-
-    # For each open position, ensure a state exists.
+    orders = mt5.orders_get(magic=CONFIG["MAGIC_NUMBER"])
+    
+    # --- Part 1: Reconstruct state for any active positions found without it ---
     for pos in positions:
         if pos.ticket not in MANAGED_TRADE_STATE:
             logger.warning(f"Position {pos.ticket} found without a state. Reconstructing...")
             
-            # Reconstruct the state by finding the ATR at the position's open time
-            # We fetch a small chunk of data around the open time
             open_timestamp = pd.to_datetime(pos.time, unit='s', utc=True)
-            rates = mt5.copy_rates_from(pos.symbol, CONFIG["TIMEFRAME"], open_timestamp, 20) # Get 20 bars up to open time
+            rates = mt5.copy_rates_from(pos.symbol, CONFIG["TIMEFRAME"], open_timestamp, 20)
             
             if rates is None or len(rates) == 0:
-                logger.error(f"Could not fetch historical data to reconstruct state for position {pos.ticket}. Cannot trail.")
+                logger.error(f"Could not fetch history to reconstruct state for position {pos.ticket}. Cannot trail.")
                 continue
 
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s').dt.tz_localize('UTC')
-
-            # Calculate ATR for this small history chunk
+            df.set_index('time', inplace=True)
             df.ta.atr(length=CONFIG["ATR_PERIOD_SL"], append=True, col_names=(f'ATR_{CONFIG["ATR_PERIOD_SL"]}',))
 
-            # Find the ATR on the candle right before the trade opened
-            # 'asof' finds the last row at or before the specified time
             last_candle_before_open = df[df.index < open_timestamp].iloc[-1]
             
             if pd.notna(last_candle_before_open[f'ATR_{CONFIG["ATR_PERIOD_SL"]}']):
@@ -236,15 +229,18 @@ def sync_trade_state():
                 MANAGED_TRADE_STATE[pos.ticket] = {'entry_atr': reconstructed_atr, 'status': 'ACTIVE_RECONSTRUCTED'}
                 logger.info(f"State for position {pos.ticket} reconstructed with entry_atr: {reconstructed_atr:.5f}")
             else:
-                logger.error(f"Failed to find valid ATR for position {pos.ticket} open time. Cannot trail.")
+                logger.error(f"Failed to find valid ATR for position {pos.ticket}. Cannot trail.")
 
-    # Also, clean up state for any tickets that no longer exist (positions were closed)
-    open_position_tickets = {pos.ticket for pos in positions}
-    closed_positions = [ticket for ticket in MANAGED_TRADE_STATE if ticket not in open_position_tickets]
-    for ticket in closed_positions:
-        logger.info(f"Position {ticket} is closed. Removing from state.")
+    # --- Part 2: Clean up the state dictionary ---
+    # Create a set of all known active tickets (both from positions and pending orders)
+    active_tickets = {pos.ticket for pos in positions} | {order.ticket for order in orders}
+
+    # Find any state entries for tickets that are no longer active
+    stale_tickets = [ticket for ticket in MANAGED_TRADE_STATE if ticket not in active_tickets]
+    
+    for ticket in stale_tickets:
+        logger.info(f"Position/Order {ticket} is closed or cancelled. Removing from state.")
         del MANAGED_TRADE_STATE[ticket]
-
 
 def cancel_stale_pending_orders():
     """
@@ -393,13 +389,23 @@ def run_live_trading_loop():
                                 'score': abs(state['impulse_peak'] - (state['zone_high'] if state['bias'] == 'BULLISH' else state['zone_low']))
                             })
                 
-                # c. If we have candidates, place a limit order for the best one
+                # c. If we have candidates, try to place an order for the best available one
                 if candidates:
                     candidates.sort(key=lambda x: x['score'], reverse=True)
-                    best_signal = candidates[0]
-                    logger.info(f"Best signal found: {best_signal['symbol']}. Placing LIMIT order.")
-                    place_limit_order(best_signal)
-            
+                    logger.info(f"Found {len(candidates)} trade candidate(s). Attempting to place order...")
+                    
+                    # Loop through sorted candidates and try to place an order
+                    for signal in candidates:
+                        logger.info(f"Attempting to place order for best candidate: {signal['symbol']} ({signal['bias']})")
+                        
+                        # place_limit_order now returns True/False
+                        if place_limit_order(signal):
+                            # If the order was successfully placed, stop trying.
+                            logger.info("Order placed successfully. Halting search for new trades.")
+                            break # Exit the 'for signal in candidates' loop
+                    
+                    # If the loop finishes without placing an order, it means all were rejected by the risk gate.
+                    # No special action is needed; the bot will just try again on the next cycle.
             time.sleep(CONFIG["LOOP_SLEEP_SECONDS"])
 
         except KeyboardInterrupt:

@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 # --- 1. CONFIGURATION ---
 CONFIG = {
     # Backtest period
-    "BACKTEST_START_DATE": "2010-01-01",
-    "BACKTEST_END_DATE": "2025-07-30",
+    "BACKTEST_START_DATE": "2025-03-01",
+    "BACKTEST_END_DATE": "2025-03-30",
     # Trading symbols
     "SYMBOLS": ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",   "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF", "CADCHF", "CADJPY", "EURCAD",
