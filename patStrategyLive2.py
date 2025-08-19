@@ -179,6 +179,7 @@ def modify_position_sl(position, new_sl):
     request = {
         "action": mt5.TRADE_ACTION_SLTP, "position": position.ticket,
         "sl": round(new_sl, ALL_SYMBOL_PROPERTIES[position.symbol]['digits']),
+         "tp": position.tp, # <-- THIS IS THE FIX: Include the current TP
     }
     result = mt5.order_send(request)
     if result.retcode == mt5.TRADE_RETCODE_DONE:
@@ -400,6 +401,12 @@ def run_live_trading_loop():
                         
                         # place_limit_order now returns True/False
                         if place_limit_order(signal):
+
+                            # --- THIS IS THE FIX ---
+                            # A trade was successfully placed, so NOW we mark the zone as not fresh.
+                            logger.info(f"Marking zone for {signal['symbol']} as no longer fresh.")
+                            DAILY_STATE[signal['symbol']]['zone_fresh'] = False
+                            # --- END OF FIX ---
                             # If the order was successfully placed, stop trying.
                             logger.info("Order placed successfully. Halting search for new trades.")
                             break # Exit the 'for signal in candidates' loop

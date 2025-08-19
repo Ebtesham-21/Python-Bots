@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 # --- 1. CONFIGURATION ---
 CONFIG = {
     # Backtest period
-    "BACKTEST_START_DATE": "2025-03-01",
-    "BACKTEST_END_DATE": "2025-03-30",
+    "BACKTEST_START_DATE": "2025-08-16",
+    "BACKTEST_END_DATE": "2025-08-17",
     # Trading symbols
     "SYMBOLS": ["EURUSD", "USDCHF",   "GBPJPY", "GBPUSD",
                            "AUDJPY",   "EURNZD", "NZDUSD", "AUDUSD", "USDCAD","USDJPY", "EURJPY","EURCHF", "CADCHF", "CADJPY", "EURCAD",
@@ -30,7 +30,7 @@ CONFIG = {
     "TRADE_START_HOUR": 9, "TRADE_START_MIN": 45,
     "TRADE_END_HOUR": 12, "TRADE_END_MIN": 0,
     # Risk management
-    "INITIAL_BALANCE": 200.0,
+    "INITIAL_BALANCE": 500.0,
     "RISK_PER_TRADE_PERCENT": 1.0,
     # Strategy parameters
     "ATR_PERIOD_STRENGTH": 14,
